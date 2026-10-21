@@ -4,8 +4,9 @@ tier('user')
 
 // The mod under test sits above these stubs: a `$.tool.call` crosses our
 // tool.call hook first, then lands on the fake Bash below, which records the
-// command it actually received and answers with canned stdout. The Linux
-// gate is probed with `uname -s` at session start, so the stubs answer it.
+// command it actually received and answers with canned stdout. The platform
+// gate is a pure env read (`OS`), so no process.run stub is needed - the
+// Darwin/Windows tests assert none happens.
 
 type BashRes = { stdout: string; stderr: string; interrupted: boolean }
 
@@ -177,11 +178,36 @@ test('an interrupted command passes through with its partial output', async ($, 
   expect(r.result.stdout).toBe('## main\n partial before ctrl-c')
 })
 
-test('a non-Linux host is untouched: uname says Darwin, no rewrite happens', async ($, on) => {
+test('non-Windows is treated as Linux: a Darwin host gets trimmed too, with no spawn', async ($, on) => {
   mock.env(on, {})
   const seen: string[] = []
+  let spawns = 0
   on('session.start', (_$: any, e: any) => ({ cwd: e.cwd }))
-  on('process.run', () => ({ value: { exitCode: 0, stdout: 'Darwin\n', stderr: '' } }))
+  on('process.run', () => {
+    spawns++
+    return { value: { exitCode: 0, stdout: 'Darwin\n', stderr: '' } }
+  })
+  on('tool.call', (_$: any, e: any) => {
+    seen.push(String((e as { command?: unknown }).command))
+    return { result: { stdout: '## main\n M a.txt\n', stderr: '', interrupted: false } }
+  })
+  await boot($)
+
+  const r = await call($, 'git status')
+  expect(seen[0]).toBe('git status --porcelain=v1 -b -uall')
+  expect(r.result.stdout).toContain('* main')
+  expect(spawns).toBe(0)
+})
+
+test('Bash on Windows is untouched: OS=Windows_NT gates the rewrite off', async ($, on) => {
+  mock.env(on, { OS: 'Windows_NT' })
+  const seen: string[] = []
+  let spawns = 0
+  on('session.start', (_$: any, e: any) => ({ cwd: e.cwd }))
+  on('process.run', () => {
+    spawns++
+    return { value: { exitCode: 0, stdout: 'Linux\n', stderr: '' } }
+  })
   on('tool.call', (_$: any, e: any) => {
     seen.push(String((e as { command?: unknown }).command))
     return { result: { stdout: '## main\n M a.txt\n', stderr: '', interrupted: false } }
@@ -191,4 +217,5 @@ test('a non-Linux host is untouched: uname says Darwin, no rewrite happens', asy
   const r = await call($, 'git status')
   expect(seen[0]).toBe('git status')
   expect(r.result.stdout).toContain('## main')
+  expect(spawns).toBe(0)
 })

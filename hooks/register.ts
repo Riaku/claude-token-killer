@@ -1,8 +1,9 @@
 // token-killer: tool.call hooks that rewrite git status / git diff /
 // recursive grep into compact forms on the way out, and compress their
 // stdout on the way back in - inside the Claude Code process, no external
-// binary. The Bash handler is Linux-only; the PowerShell handler
-// (Get-ChildItem) is Windows-only. Everything else is a no-op.
+// binary. The Bash handler runs everywhere except Windows (non-Windows is
+// treated as Linux); the PowerShell handler (Get-ChildItem) is
+// Windows-only. Everything else is a no-op.
 //
 // Fail-open by design: a compressor that throws simply lets the original
 // output through (the engine skips a throwing hook). Unlike a redactor, the
@@ -34,15 +35,16 @@ export const register: Register = (on, options) => {
     maxDirEntries: opts.maxDirEntries ?? DEFAULT_CAPS.maxDirEntries,
   }
 
-  // Platform detection, zero-cost at session start (no probe hooks at all):
+  // Platform detection, zero-spawn everywhere:
   //
-  // - Windows answers `OS=Windows_NT` in every NT-family process env
-  //   (native cmd/PowerShell, Git Bash/MSYS, Cygwin all pass it through;
-  //   Linux/macOS leave it unset). An in-process env read - no spawn.
-  // - Linux has no reliable env marker, so it needs `uname -s` - but the
-  //   probe is lazy: paid at most once per session, and only when a
-  //   rewrite candidate actually fires. Windows short-circuits on the
-  //   env check and never spawns; non-candidate commands never probe.
+  // Windows answers `OS=Windows_NT` in every NT-family process env
+  // (native cmd/PowerShell, Git Bash/MSYS, Cygwin all pass it through;
+  // Linux/macOS leave it unset). That single in-process env read is the
+  // whole gate: NOT Windows is treated as Linux. This is safe because the
+  // compressors are format-driven with a never-inflate guard, and git
+  // porcelain / grep output is platform-identical - an unexpected
+  // platform's output simply fails to match and passes through unchanged.
+  // No `uname`, no `cmd.exe`, no spawn on any path.
   //
   // The sandbox forbids passing `$` to helpers, so each gate is inlined
   // at its call site over these memoized answers.
@@ -56,20 +58,8 @@ export const register: Register = (on, options) => {
     const plan = planRewrite(command)
     if (!plan) return next(e)
 
-    // Gate after the plan: commands that are not rewrite candidates never
-    // pay for platform detection, and Windows never reaches the spawn.
-    if (linux === null) {
-      if ((await $.env.get('OS')) === 'Windows_NT') {
-        linux = false
-      } else {
-        try {
-          const probe = await $.process.run(['uname', '-s'])
-          linux = probe.exitCode === 0 && probe.stdout.trim() === 'Linux'
-        } catch {
-          linux = false
-        }
-      }
-    }
+    // Gate after the plan: non-candidate commands never even read the env.
+    if (linux === null) linux = (await $.env.get('OS')) !== 'Windows_NT'
     if (!linux) return next(e)
 
     const r = await next(plan.command === command ? e : { ...e, command: plan.command })

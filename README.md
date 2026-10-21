@@ -61,15 +61,14 @@ reaches the model raw and uncompressed.
 
 ## Startup cost
 
-Nothing runs at session start. Platform detection is lazy and memoized,
-and only paid when a rewrite candidate actually fires:
-
-- **Windows:** `env.OS === 'Windows_NT'` - an in-process lookup, no spawn.
-- **Linux:** needs `uname -s` (no reliable env marker), but at most one
-  spawn per session, only on the first rewrite candidate.
-- **Non-candidate commands** (anything that isn't `git status` / `git
-  diff` / recursive `grep` / `Get-ChildItem`) never trigger detection at
-  all - the plan check runs first and returns before any gate.
+Zero. Nothing runs at session start and no path spawns a process. The
+platform gate is a single memoized in-process env read: `OS=Windows_NT`
+means Windows (set by every NT-family shell, unset on Linux/macOS),
+everything else is treated as Linux. That is safe because the
+compressors are format-driven with a never-inflate guard and git
+porcelain / grep output is platform-identical - an unexpected platform's
+output fails to match and passes through unchanged. Non-candidate
+commands never even read the env: the plan check returns first.
 
 ## Getting the full output back
 
