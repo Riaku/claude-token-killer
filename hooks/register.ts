@@ -10,6 +10,7 @@
 import type { Register } from 'claude-code'
 import { DEFAULT_CAPS, compressGitDiff, compressGitStatus, compressGrep, type Caps } from './compress.ts'
 import { planRewrite } from './plan.ts'
+import { compressPsDir, planPowerShell } from './powershell.ts'
 
 type Options = Partial<Caps> & { notify?: boolean }
 
@@ -29,6 +30,7 @@ export const register: Register = (on, options) => {
     maxGrepPerFile: opts.maxGrepPerFile ?? DEFAULT_CAPS.maxGrepPerFile,
     maxGrepTotal: opts.maxGrepTotal ?? DEFAULT_CAPS.maxGrepTotal,
     maxLineLen: opts.maxLineLen ?? DEFAULT_CAPS.maxLineLen,
+    maxDirEntries: opts.maxDirEntries ?? DEFAULT_CAPS.maxDirEntries,
   }
 
   // The mod sandbox has no Node `process`, so the Linux gate is asked of the
@@ -92,5 +94,46 @@ export const register: Register = (on, options) => {
     // Fail-open: if this hook throws or overruns its budget, replay the
     // dispatch unchanged (next(e) replays the run if it already happened,
     // or runs the original command if not). Worst case is wasted tokens.
+    .catch(($, e, next) => next(e))
+
+  // PoC: PowerShell tool, Get-ChildItem only. The tool registers only on
+  // Windows, so this branch simply never fires on other platforms - no
+  // uname gate required. Same safety rules as the Bash side: refusal /
+  // error / interrupted pass through, and compression is only applied
+  // when it actually shrinks the output.
+  on('tool.call', { tool: 'PowerShell' }, async ($, e, next) => {
+    const command = (e as { command?: unknown }).command
+    if (typeof command !== 'string') return next(e)
+
+    const plan = planPowerShell(command)
+    if (!plan) return next(e)
+
+    const r = await next(e)
+
+    if (r.deny !== undefined || r.isError) return r
+    const maybeInterrupted = r.result as { interrupted?: unknown } | undefined
+    if (maybeInterrupted && typeof maybeInterrupted === 'object' && maybeInterrupted.interrupted === true) return r
+
+    const res = r.result as { stdout?: unknown } | string | undefined
+    const original =
+      typeof res === 'string' ? res : res && typeof res.stdout === 'string' ? res.stdout : null
+    if (original === null || original === '') return r
+
+    const compressed = compressPsDir(original, caps.maxDirEntries)
+    if (compressed === original || compressed.length >= original.length) return r
+
+    const saved = original.length - compressed.length
+    const pct = Math.round((saved / original.length) * 100)
+    if (notify && saved >= 200) {
+      try {
+        $.ui.toast(`token-killer: ps-dir -${saved} bytes (${pct}%)`)
+      } catch {
+        // no UI: the compression still stands
+      }
+    }
+
+    if (typeof res === 'string') return { result: compressed }
+    return { result: { ...(res as object), stdout: compressed } }
+  })
     .catch(($, e, next) => next(e))
 }

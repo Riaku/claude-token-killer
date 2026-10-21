@@ -31,6 +31,27 @@ and anything else run **exactly as the model wrote them**. A compressor that
 would make the output *longer* is discarded. If the mod itself throws, the
 dispatch is replayed untouched (fail-open).
 
+## PowerShell tool (PoC)
+
+On Windows, Claude Code registers a `PowerShell` tool alongside `Bash`. The
+mod registers a second `tool.call` handler for it covering the cmdlet with
+the fattest output: `Get-ChildItem` (and its aliases `gci` / `ls` / `dir`).
+
+| Cmdlet | Rewrite | Output |
+| --- | --- | --- |
+| `Get-ChildItem` | none — runs exactly as written | `path (N entries):` + `dir/` / `file (size)`, table headers, user/group columns and timestamps dropped, entry cap with recovery hint |
+
+Compression-only by design: PowerShell parameter semantics are riskier to
+rewrite than bash's, and the six-column `Format-Table` is where the tokens
+actually go. The parser reads rows from the back (name last, size before
+it), so both the Windows (`Mode LastWriteTime Length Name`) and Linux pwsh
+(`UnixMode User Group LastWriteTime Size Name`) column layouts work.
+Measured on live `pwsh` output: **84% smaller** (2.9 KB → 0.5 KB for a
+38-entry directory). Same safety rules as the Bash side: unrecognized
+output, refusals, errors and interrupts pass through; the `# tk:raw`
+comment marker disables the trim. The handler is inert on Linux/macOS —
+the tool itself never registers there.
+
 ## Getting the full output back
 
 Compression never strands the model. Whenever lines are elided, the elision

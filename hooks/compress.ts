@@ -15,6 +15,8 @@ export type Caps = {
   maxGrepTotal: number
   /** grep: truncate any single match line longer than this. */
   maxLineLen: number
+  /** PowerShell Get-ChildItem: kept entries per directory section. */
+  maxDirEntries: number
 }
 
 export const DEFAULT_CAPS: Caps = {
@@ -24,6 +26,7 @@ export const DEFAULT_CAPS: Caps = {
   maxGrepPerFile: 8,
   maxGrepTotal: 150,
   maxLineLen: 200,
+  maxDirEntries: 200,
 }
 
 // ---------------------------------------------------------------- git status
