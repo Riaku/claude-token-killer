@@ -34,42 +34,43 @@ export const register: Register = (on, options) => {
     maxDirEntries: opts.maxDirEntries ?? DEFAULT_CAPS.maxDirEntries,
   }
 
-  // The mod sandbox has no Node `process`, so the platform is asked of the
-  // engine itself at session start. The Bash handler runs only on Linux;
-  // the PowerShell handler runs only on Windows - PowerShell on Linux (via
-  // CLAUDE_CODE_USE_POWERSHELL_TOOL) is deliberately NOT trimmed.
-  let linux = false
-  let windows = false
-
-  on('session.start', async ($, e, next) => {
-    try {
-      const probe = await $.process.run(['uname', '-s'])
-      const s = probe.exitCode === 0 ? probe.stdout.trim() : ''
-      linux = s === 'Linux'
-      // Git Bash / MSYS / Cygwin uname on Windows reports *NT-*.
-      windows = /NT-|MINGW|MSYS|CYGWIN/i.test(s)
-    } catch {
-      // no uname: fall through to the cmd.exe probe
-    }
-    if (!linux && !windows) {
-      try {
-        const w = await $.process.run(['cmd.exe', '/c', 'ver'])
-        windows = w.exitCode === 0 && /Microsoft Windows/i.test(w.stdout)
-      } catch {
-        // no cmd.exe either: not Windows
-      }
-    }
-    return next(e)
-  })
+  // Platform detection, zero-cost at session start (no probe hooks at all):
+  //
+  // - Windows answers `OS=Windows_NT` in every NT-family process env
+  //   (native cmd/PowerShell, Git Bash/MSYS, Cygwin all pass it through;
+  //   Linux/macOS leave it unset). An in-process env read - no spawn.
+  // - Linux has no reliable env marker, so it needs `uname -s` - but the
+  //   probe is lazy: paid at most once per session, and only when a
+  //   rewrite candidate actually fires. Windows short-circuits on the
+  //   env check and never spawns; non-candidate commands never probe.
+  //
+  // The sandbox forbids passing `$` to helpers, so each gate is inlined
+  // at its call site over these memoized answers.
+  let windows: boolean | null = null
+  let linux: boolean | null = null
 
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
-    if (!linux) return next(e)
-
     const command = (e as { command?: unknown }).command
     if (typeof command !== 'string') return next(e)
 
     const plan = planRewrite(command)
     if (!plan) return next(e)
+
+    // Gate after the plan: commands that are not rewrite candidates never
+    // pay for platform detection, and Windows never reaches the spawn.
+    if (linux === null) {
+      if ((await $.env.get('OS')) === 'Windows_NT') {
+        linux = false
+      } else {
+        try {
+          const probe = await $.process.run(['uname', '-s'])
+          linux = probe.exitCode === 0 && probe.stdout.trim() === 'Linux'
+        } catch {
+          linux = false
+        }
+      }
+    }
+    if (!linux) return next(e)
 
     const r = await next(plan.command === command ? e : { ...e, command: plan.command })
 
@@ -116,13 +117,15 @@ export const register: Register = (on, options) => {
   // / error / interrupted pass through, and compression is only applied
   // when it actually shrinks the output.
   on('tool.call', { tool: 'PowerShell' }, async ($, e, next) => {
-    if (!windows) return next(e)
-
     const command = (e as { command?: unknown }).command
     if (typeof command !== 'string') return next(e)
 
     const plan = planPowerShell(command)
     if (!plan) return next(e)
+
+    // Windows-only, decided by an env read: this path never spawns anything.
+    if (windows === null) windows = (await $.env.get('OS')) === 'Windows_NT'
+    if (!windows) return next(e)
 
     const r = await next(e)
 

@@ -53,11 +53,23 @@ comment marker disables the trim.
 
 **Windows only, by explicit gate.** The engine registers the PowerShell
 tool on Linux/macOS only when `CLAUDE_CODE_USE_POWERSHELL_TOOL=true` is
-set; this mod deliberately does *not* trim that configuration. The
-handler checks the platform at session start (`uname -s` reporting
-`*NT*`/MINGW/MSYS/Cygwin, or `cmd.exe /c ver`) and stays inert on
-Linux even when the tool fires there. Verified live: with the flag set on
-Linux, `Get-ChildItem` output reaches the model raw and uncompressed.
+set; this mod deliberately does *not* trim that configuration. The gate
+is a single in-process env read (`OS=Windows_NT`, set by every NT-family
+shell, unset on Linux/macOS) - no process spawn, ever, on the PowerShell
+path. Verified live: with the flag set on Linux, `Get-ChildItem` output
+reaches the model raw and uncompressed.
+
+## Startup cost
+
+Nothing runs at session start. Platform detection is lazy and memoized,
+and only paid when a rewrite candidate actually fires:
+
+- **Windows:** `env.OS === 'Windows_NT'` - an in-process lookup, no spawn.
+- **Linux:** needs `uname -s` (no reliable env marker), but at most one
+  spawn per session, only on the first rewrite candidate.
+- **Non-candidate commands** (anything that isn't `git status` / `git
+  diff` / recursive `grep` / `Get-ChildItem`) never trigger detection at
+  all - the plan check runs first and returns before any gate.
 
 ## Getting the full output back
 
