@@ -49,8 +49,15 @@ it), so both the Windows (`Mode LastWriteTime Length Name`) and Linux pwsh
 Measured on live `pwsh` output: **84% smaller** (2.9 KB → 0.5 KB for a
 38-entry directory). Same safety rules as the Bash side: unrecognized
 output, refusals, errors and interrupts pass through; the `# tk:raw`
-comment marker disables the trim. The handler is inert on Linux/macOS —
-the tool itself never registers there.
+comment marker disables the trim.
+
+**Windows only, by explicit gate.** The engine registers the PowerShell
+tool on Linux/macOS only when `CLAUDE_CODE_USE_POWERSHELL_TOOL=true` is
+set; this mod deliberately does *not* trim that configuration. The
+handler checks the platform at session start (`uname -s` reporting
+`*NT*`/MINGW/MSYS/Cygwin, or `cmd.exe /c ver`) and stays inert on
+Linux even when the tool fires there. Verified live: with the flag set on
+Linux, `Get-ChildItem` output reaches the model raw and uncompressed.
 
 ## Getting the full output back
 

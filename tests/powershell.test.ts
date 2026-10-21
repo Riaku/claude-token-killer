@@ -130,10 +130,29 @@ type PsRes = { stdout: string; stderr: string; interrupted: boolean }
 
 const SESSION = { cwd: '/work', surface: null, isInteractive: false } as const
 
-function fakePowerShell(on: any, stdout: string, seen: string[]) {
+// Platform probes are answered per argv: `uname -s` and `cmd.exe /c ver`.
+// Windows is reported as Git Bash's MINGW uname string, which the gate
+// must recognize without ever reaching the cmd.exe probe.
+function stubPlatform(on: any, os: 'windows' | 'linux') {
+  on('process.run', (_$: any, e: any) => {
+    const argv: readonly string[] = (e as { argv?: readonly string[] }).argv ?? []
+    if (argv[0] === 'uname') {
+      return {
+        value: {
+          exitCode: 0,
+          stdout: os === 'windows' ? 'MINGW64_NT-10.0-19045\n' : 'Linux\n',
+          stderr: '',
+        },
+      }
+    }
+    return { value: { exitCode: 1, stdout: '', stderr: 'not found' } }
+  })
+}
+
+function fakePowerShell(on: any, stdout: string, seen: string[], os: 'windows' | 'linux' = 'windows') {
   mock.env(on, {})
   on('session.start', (_$: any, e: any) => ({ cwd: e.cwd }))
-  on('process.run', () => ({ value: { exitCode: 0, stdout: 'Linux\n', stderr: '' } }))
+  stubPlatform(on, os)
   on('ui.toast', () => ({ value: undefined }))
   on('tool.call', (_$: any, e: any) => {
     seen.push(String((e as { command?: unknown }).command))
@@ -141,22 +160,31 @@ function fakePowerShell(on: any, stdout: string, seen: string[]) {
   })
 }
 
-test('PowerShell gci round-trips through the hook compressed', async ($, on) => {
+test('PowerShell gci round-trips through the hook compressed on Windows', async ($, on) => {
   const seen: string[] = []
-  fakePowerShell(on, LINUX_TABLE, seen)
+  fakePowerShell(on, WINDOWS_TABLE, seen, 'windows')
   await $.session.start(SESSION)
 
   const r: any = await $.tool.call({ tool: 'PowerShell', command: 'gci' })
   expect(seen[0]).toBe('gci')
-  expect(r.result.stdout).toContain('psfix (4 entries):')
-  expect(r.result.stdout).not.toContain('UnixMode')
-  expect(r.result.stdout.length).toBeLessThan(LINUX_TABLE.length)
+  expect(r.result.stdout).toContain('node_modules/')
+  expect(r.result.stdout).not.toContain('LastWriteTime')
+  expect(r.result.stdout.length).toBeLessThan(WINDOWS_TABLE.length)
+})
+
+test('PowerShell on Linux is NOT trimmed: the handler stays inert', async ($, on) => {
+  const seen: string[] = []
+  fakePowerShell(on, LINUX_TABLE, seen, 'linux')
+  await $.session.start(SESSION)
+
+  const r: any = await $.tool.call({ tool: 'PowerShell', command: 'gci' })
+  expect(r.result.stdout).toBe(LINUX_TABLE)
 })
 
 test('non-gci PowerShell commands pass through untouched', async ($, on) => {
   const seen: string[] = []
   const proc = 'Handles  NPM(K)  ProcessName\n-------  -------  -----------\n1200     50       chrome'
-  fakePowerShell(on, proc, seen)
+  fakePowerShell(on, proc, seen, 'windows')
   await $.session.start(SESSION)
 
   const r: any = await $.tool.call({ tool: 'PowerShell', command: 'Get-Process' })
@@ -166,7 +194,7 @@ test('non-gci PowerShell commands pass through untouched', async ($, on) => {
 test('error results pass through uncompressed', async ($, on) => {
   mock.env(on, {})
   on('session.start', (_$: any, e: any) => ({ cwd: e.cwd }))
-  on('process.run', () => ({ value: { exitCode: 0, stdout: 'Linux\n', stderr: '' } }))
+  stubPlatform(on, 'windows')
   on('ui.toast', () => ({ value: undefined }))
   on('tool.call', () => ({
     isError: true,

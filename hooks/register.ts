@@ -1,7 +1,8 @@
-// token-killer: one tool.call hook on Bash. Rewrites git status / git diff /
-// recursive grep into compact forms on the way out, and compresses their
+// token-killer: tool.call hooks that rewrite git status / git diff /
+// recursive grep into compact forms on the way out, and compress their
 // stdout on the way back in - inside the Claude Code process, no external
-// binary. Linux only for the PoC; every other platform is a no-op.
+// binary. The Bash handler is Linux-only; the PowerShell handler
+// (Get-ChildItem) is Windows-only. Everything else is a no-op.
 //
 // Fail-open by design: a compressor that throws simply lets the original
 // output through (the engine skips a throwing hook). Unlike a redactor, the
@@ -33,17 +34,30 @@ export const register: Register = (on, options) => {
     maxDirEntries: opts.maxDirEntries ?? DEFAULT_CAPS.maxDirEntries,
   }
 
-  // The mod sandbox has no Node `process`, so the Linux gate is asked of the
-  // engine itself at session start. Until `uname` answers Linux, every hook
-  // is a pass-through - other platforms are untouched.
+  // The mod sandbox has no Node `process`, so the platform is asked of the
+  // engine itself at session start. The Bash handler runs only on Linux;
+  // the PowerShell handler runs only on Windows - PowerShell on Linux (via
+  // CLAUDE_CODE_USE_POWERSHELL_TOOL) is deliberately NOT trimmed.
   let linux = false
+  let windows = false
 
   on('session.start', async ($, e, next) => {
     try {
       const probe = await $.process.run(['uname', '-s'])
-      linux = probe.exitCode === 0 && probe.stdout.trim() === 'Linux'
+      const s = probe.exitCode === 0 ? probe.stdout.trim() : ''
+      linux = s === 'Linux'
+      // Git Bash / MSYS / Cygwin uname on Windows reports *NT-*.
+      windows = /NT-|MINGW|MSYS|CYGWIN/i.test(s)
     } catch {
-      linux = false
+      // no uname: fall through to the cmd.exe probe
+    }
+    if (!linux && !windows) {
+      try {
+        const w = await $.process.run(['cmd.exe', '/c', 'ver'])
+        windows = w.exitCode === 0 && /Microsoft Windows/i.test(w.stdout)
+      } catch {
+        // no cmd.exe either: not Windows
+      }
     }
     return next(e)
   })
@@ -96,12 +110,14 @@ export const register: Register = (on, options) => {
     // or runs the original command if not). Worst case is wasted tokens.
     .catch(($, e, next) => next(e))
 
-  // PoC: PowerShell tool, Get-ChildItem only. The tool registers only on
-  // Windows, so this branch simply never fires on other platforms - no
-  // uname gate required. Same safety rules as the Bash side: refusal /
-  // error / interrupted pass through, and compression is only applied
+  // PoC: PowerShell tool, Get-ChildItem only. Windows only, by explicit
+  // choice: PowerShell running on Linux (opt-in flag) is out of scope and
+  // passes through untouched. Same safety rules as the Bash side: refusal
+  // / error / interrupted pass through, and compression is only applied
   // when it actually shrinks the output.
   on('tool.call', { tool: 'PowerShell' }, async ($, e, next) => {
+    if (!windows) return next(e)
+
     const command = (e as { command?: unknown }).command
     if (typeof command !== 'string') return next(e)
 
