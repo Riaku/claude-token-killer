@@ -57,9 +57,11 @@ export const register: Register = (on, options) => {
 
     const r = await next(plan.command === command ? e : { ...e, command: plan.command })
 
-    // A refusal or a failed command: the model needs the real error, not a
-    // compressed one.
+    // A refusal, a failed command, or an interrupted one: the model needs
+    // the real output, not a compressed one.
     if (r.deny !== undefined || r.isError) return r
+    const maybeInterrupted = r.result as { interrupted?: unknown } | undefined
+    if (maybeInterrupted && typeof maybeInterrupted === 'object' && maybeInterrupted.interrupted === true) return r
 
     // The Bash result is { stdout, stderr, interrupted, ... }; a test harness
     // below us may answer with a plain string. Handle both shapes.

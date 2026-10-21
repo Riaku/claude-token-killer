@@ -112,7 +112,7 @@ describe('compressGitDiff', () => {
     const hunk = Array.from({ length: 200 }, (_, i) => (i % 20 === 0 ? `+changed${i}` : ` context${i}`)).join('\n')
     const big = `diff --git a/big.txt b/big.txt\n@@ -1,200 +1,200 @@\n${hunk}\n`
     const out = compressGitDiff(big, { ...DEFAULT_CAPS, maxDiffLinesPerFile: 10 })
-    expect(out).toContain('lines elided - full: git diff -- big.txt')
+    expect(out).toContain('lines elided - raw: git diff -- big.txt # tk:raw')
   })
 
   test('total cap summarizes the remaining files', () => {

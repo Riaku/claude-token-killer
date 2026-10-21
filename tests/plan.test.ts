@@ -145,4 +145,13 @@ describe('planRewrite: safety', () => {
     expect(planRewrite('/usr/bin/git status')?.kind).toBe('git-status')
     expect(planRewrite('/bin/grep -r x .')?.kind).toBe('grep')
   })
+
+  test('the tk:raw bail marker disables the rewrite (recovery path)', () => {
+    // Elision hints tell the model to re-run with `# tk:raw`; the planner
+    // bails on any comment, so the re-run reaches the shell untouched and
+    // its output is never compressed.
+    expect(planRewrite('git diff -- big.txt # tk:raw')).toBeNull()
+    expect(planRewrite('git status # tk:raw')).toBeNull()
+    expect(planRewrite('grep -r TODO src/ # tk:raw')).toBeNull()
+  })
 })

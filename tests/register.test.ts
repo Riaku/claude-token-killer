@@ -143,6 +143,40 @@ test('a string-shaped result (plain harness) is compressed too', async ($, on) =
   expect(String(r.result)).toContain('* main')
 })
 
+test('recovery: a `# tk:raw` re-run reaches the shell untouched and uncompressed', async ($, on) => {
+  const bigDiff = [
+    'diff --git a/big.txt b/big.txt',
+    '@@ -1,200 +1,200 @@',
+    ...Array.from({ length: 200 }, (_, i) => (i % 10 === 0 ? `+changed${i}` : ` context${i}`)),
+  ].join('\n')
+  const seen: string[] = []
+  fakeBash(on, bigDiff, seen)
+  await boot($)
+
+  // First: normal call gets rewritten and compressed.
+  const r1 = await call($, 'git diff')
+  expect(seen[0]).toBe('git diff --no-color')
+  expect(r1.result.stdout).toContain('elided')
+  expect(r1.result.stdout.length).toBeLessThan(bigDiff.length)
+
+  // Recovery: the exact command from the elision hint runs raw.
+  const r2 = await call($, 'git diff -- big.txt # tk:raw')
+  expect(seen[1]).toBe('git diff -- big.txt # tk:raw')
+  expect(r2.result.stdout).toBe(bigDiff)
+})
+
+test('an interrupted command passes through with its partial output', async ($, on) => {
+  mock.env(on, {})
+  on('session.start', (_$: any, e: any) => ({ cwd: e.cwd }))
+  on('process.run', () => ({ value: { exitCode: 0, stdout: 'Linux\n', stderr: '' } }))
+  on('tool.call', () => ({ result: { stdout: '## main\n partial before ctrl-c', stderr: '', interrupted: true } }))
+  await boot($)
+
+  const r = await call($, 'git status')
+  expect(r.result.interrupted).toBe(true)
+  expect(r.result.stdout).toBe('## main\n partial before ctrl-c')
+})
+
 test('a non-Linux host is untouched: uname says Darwin, no rewrite happens', async ($, on) => {
   mock.env(on, {})
   const seen: string[] = []

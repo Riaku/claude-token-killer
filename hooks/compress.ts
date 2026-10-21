@@ -60,7 +60,7 @@ export function compressGitStatus(porcelain: string, caps: Caps = DEFAULT_CAPS):
   }
 
   if (untrackedTotal > untrackedShown) {
-    out.push(`... +${untrackedTotal - untrackedShown} more untracked`)
+    out.push(`... +${untrackedTotal - untrackedShown} more untracked (raw: re-run with # tk:raw)`)
   }
   return out.join('\n')
 }
@@ -191,7 +191,7 @@ export function compressGitDiff(text: string, caps: Caps = DEFAULT_CAPS): string
       const shown = kept.slice(0, caps.maxDiffLinesPerFile)
       const hidden = kept.length - shown.length
       out.push(...shown)
-      out.push(`... +${hidden} lines elided - full: git diff -- ${f.path}`)
+      out.push(`... +${hidden} lines elided - raw: git diff -- ${f.path} # tk:raw`)
       budget -= shown.length + 1
     } else {
       out.push(...kept)
@@ -201,7 +201,7 @@ export function compressGitDiff(text: string, caps: Caps = DEFAULT_CAPS): string
 
   if (elidedFiles > 0) {
     out.push('')
-    out.push(`... +${elidedFiles} more file${elidedFiles === 1 ? '' : 's'} elided (+${elidedAdded} -${elidedRemoved}) - full: git diff`)
+    out.push(`... +${elidedFiles} more file${elidedFiles === 1 ? '' : 's'} elided (+${elidedAdded} -${elidedRemoved}) - raw: git diff # tk:raw`)
   }
   return out.join('\n')
 }
@@ -247,12 +247,12 @@ export function compressGrep(text: string, caps: Caps = DEFAULT_CAPS): string {
     out.push('')
     out.push(`${file} (${matches.length}):`)
     for (const m of shown) out.push(truncate(m))
-    if (matches.length > shown.length) out.push(`... +${matches.length - shown.length} more in ${file}`)
+    if (matches.length > shown.length) out.push(`... +${matches.length - shown.length} more in ${file} (raw: re-run with # tk:raw)`)
     budget -= shown.length
   }
 
   const shownTotal = caps.maxGrepTotal - Math.max(budget, 0)
-  if (total > shownTotal) out.push(`... +${total - shownTotal} matches elided`)
+  if (total > shownTotal) out.push(`... +${total - shownTotal} matches elided (raw: re-run with # tk:raw)`)
 
   if (notes.length > 0) out.push('', ...notes)
   return out.join('\n')

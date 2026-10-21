@@ -31,6 +31,23 @@ and anything else run **exactly as the model wrote them**. A compressor that
 would make the output *longer* is discarded. If the mod itself throws, the
 dispatch is replayed untouched (fail-open).
 
+## Getting the full output back
+
+Compression never strands the model. Whenever lines are elided, the elision
+line names the exact recovery command, tagged with the bail marker
+`# tk:raw`:
+
+```
+... +140 lines elided - raw: git diff -- big.txt # tk:raw
+```
+
+The planner bails on any command containing a comment, so re-running the
+hinted command verbatim reaches the shell untouched and its output is
+never compressed — the same "recall" idea as PTK, without a recall store.
+Failure paths are pass-through too: refusals, non-zero exits, and
+interrupted commands all keep their real, uncompressed output.
+
+
 ## Install
 
 ```bash
