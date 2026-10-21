@@ -1,0 +1,4 @@
+{
+  "description": "token-killer: one tool.call hook on Bash that rewrites git status / git diff / grep into compact forms and compresses their output in flight.",
+  "modules": ["./register.ts"]
+}

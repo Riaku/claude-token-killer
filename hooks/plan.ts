@@ -1,0 +1,175 @@
+// The planner: decides whether a raw Bash command may be rewritten, and to
+// what. Safety first - anything the planner is not sure about returns null and
+// the command runs exactly as the model wrote it.
+//
+// Rewritten only when ALL of:
+//   - the command is a single simple invocation (no pipes, &&, ;, redirects,
+//     command substitution, backgrounding, unbalanced quotes)
+//   - it is one of the three PoC shapes: `git status`, `git diff`, `grep -r`
+//   - it carries no flag that would make our compressor wrong (-z, --json,
+//     --stat, --count, --name-only, ...)
+
+export type PlanKind = 'git-status' | 'git-diff' | 'grep'
+
+export type Plan = {
+  kind: PlanKind
+  command: string
+}
+
+// Unquoted shell control syntax: a command containing any of it is never
+// rewritten. `$VAR` alone is allowed (plain expansion, the user's own intent);
+// `$( )`, `${ }`, backticks and everything that chains or redirects is not.
+const UNSAFE = /[|;&<>]|\$\(|\$\{|`|\r|\n|#/
+
+function basename(token: string): string {
+  return token.slice(token.lastIndexOf('/') + 1)
+}
+
+/** Shell-quote a token only when it is not already shell-safe. */
+function sq(token: string): string {
+  if (/^[A-Za-z0-9_@%+=:,.\/-]+$/.test(token)) return token
+  return "'" + token.replace(/'/g, `'\\''`) + "'"
+}
+
+/**
+ * Split a command line into tokens, honoring single quotes, double quotes and
+ * backslash escapes. Returns null on unbalanced quoting so the caller passes
+ * the command through untouched.
+ */
+export function tokenize(raw: string): string[] | null {
+  const tokens: string[] = []
+  let cur = ''
+  let has = false
+  let inSingle = false
+  let inDouble = false
+
+  for (let i = 0; i < raw.length; i += 1) {
+    const c = raw[i]
+    if (inSingle) {
+      if (c === "'") inSingle = false
+      else cur += c
+      continue
+    }
+    if (inDouble) {
+      if (c === '"') {
+        inDouble = false
+        has = true
+      } else if (c === '\\' && i + 1 < raw.length && /["\\$`]/.test(raw[i + 1])) {
+        cur += raw[(i += 1)]
+      } else {
+        cur += c
+      }
+      continue
+    }
+    if (c === "'") {
+      inSingle = true
+      has = true
+      continue
+    }
+    if (c === '"') {
+      inDouble = true
+      has = true
+      continue
+    }
+    if (c === '\\' && i + 1 < raw.length) {
+      cur += raw[(i += 1)]
+      has = true
+      continue
+    }
+    if (/\s/.test(c)) {
+      if (has) {
+        tokens.push(cur)
+        cur = ''
+        has = false
+      }
+      continue
+    }
+    cur += c
+    has = true
+  }
+  if (inSingle || inDouble) return null
+  if (has) tokens.push(cur)
+  return tokens
+}
+
+function planGit(tokens: string[]): Plan | null {
+  let i = 1
+  const global: string[] = []
+
+  // Global git options before the subcommand: only pass through the ones we
+  // understand; anything else, we bail.
+  while (i < tokens.length && tokens[i].startsWith('-')) {
+    const t = tokens[i]
+    if (t === '-C' || t === '-c' || t === '--git-dir' || t === '--work-tree' || t === '--namespace') {
+      if (i + 1 >= tokens.length) return null
+      global.push(t, tokens[i + 1])
+      i += 2
+    } else if (t.startsWith('--git-dir=') || t.startsWith('--work-tree=') || t === '--no-pager') {
+      global.push(t)
+      i += 1
+    } else {
+      return null
+    }
+  }
+
+  const sub = tokens[i]
+  const rest = tokens.slice(i + 1)
+  const rebuild = (extra: string[]): string =>
+    ['git', ...global, sub, ...rest, ...extra].map(sq).join(' ')
+
+  if (sub === 'status') {
+    if (rest.some((t) => t === '-z' || t === '--json' || t.startsWith('--porcelain=2'))) return null
+    // Already porcelain/short output: compress only, no rewrite.
+    const alreadyCompact = rest.some((t) => t.startsWith('--porcelain') || t === '-s' || t === '--short' || (/^-[a-zA-Z]+$/.test(t) && t.includes('s')))
+    if (alreadyCompact) return { kind: 'git-status', command: rebuild([]) }
+    const add = ['--porcelain=v1', '-b']
+    const hasUntrackedFlag = rest.some((t) => t.startsWith('-u') || t.startsWith('--untracked-files'))
+    if (!hasUntrackedFlag) add.push('-uall')
+    return { kind: 'git-status', command: rebuild(add) }
+  }
+
+  if (sub === 'diff') {
+    const skip = ['--stat', '--numstat', '--shortstat', '--raw', '--name-only', '--name-status', '--json', '-z', '--no-index']
+    if (rest.some((t) => skip.includes(t.split('=')[0]))) return null
+    const hasNoColor = rest.some((t) => t === '--no-color' || t === '--color=never')
+    return { kind: 'git-diff', command: hasNoColor ? rebuild([]) : rebuild(['--no-color']) }
+  }
+
+  return null
+}
+
+function planGrep(tokens: string[]): Plan | null {
+  const opts = tokens.slice(1)
+  let recursive = false
+  let lineNumbers = false
+
+  for (const t of opts) {
+    if (t.startsWith('--')) {
+      const name = t.split('=')[0]
+      if (['--count', '--files-with-matches', '--files-without-match', '--quiet', '--null', '--null-data', '--include-zero'].includes(name)) return null
+      if (name === '--recursive') recursive = true
+      if (name === '--line-number') lineNumbers = true
+    } else if (/^-[A-Za-z]+$/.test(t)) {
+      const letters = t.slice(1)
+      if (/[clLqZz]/.test(letters)) return null
+      if (/[rR]/.test(letters)) recursive = true
+      if (letters.includes('n')) lineNumbers = true
+    }
+  }
+
+  if (!recursive) return null
+  // -n takes no value, so inserting it up front cannot shift anything.
+  return { kind: 'grep', command: ['grep', ...(lineNumbers ? [] : ['-n']), ...opts].map(sq).join(' ') }
+}
+
+/** Decide the rewrite for a raw command, or null to pass it through. */
+export function planRewrite(raw: string): Plan | null {
+  if (UNSAFE.test(raw)) return null
+  const tokens = tokenize(raw)
+  if (!tokens || tokens.length === 0) return null
+
+  const head = basename(tokens[0])
+  if (head === 'git') return planGit(tokens)
+  if (head === 'grep') return planGrep(tokens)
+  return null
+}

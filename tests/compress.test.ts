@@ -1,0 +1,166 @@
+import { describe, expect, test } from 'claude-code/testing'
+import { DEFAULT_CAPS, compressGitDiff, compressGitStatus, compressGrep } from '../hooks/compress.ts'
+
+describe('compressGitStatus', () => {
+  test('empty porcelain reads as clean', () => {
+    expect(compressGitStatus('')).toBe('clean - nothing to commit')
+    expect(compressGitStatus('\n\n')).toBe('clean - nothing to commit')
+  })
+
+  test('branch header becomes * branch', () => {
+    const out = compressGitStatus('## main...origin/main [ahead 2, behind 1]\n M a.txt\n')
+    expect(out).toContain('* main...origin/main [ahead 2, behind 1]')
+    expect(out).toContain(' M a.txt')
+    expect(out).not.toContain('## ')
+  })
+
+  test('untracked files are capped with an elision line', () => {
+    const many = Array.from({ length: 250 }, (_, i) => `?? f${i}.txt`).join('\n')
+    const out = compressGitStatus(`## main\n${many}\n`, DEFAULT_CAPS)
+    expect(out).toContain('f0.txt')
+    expect(out).toContain('... +50 more untracked')
+    expect(out).not.toContain('f249.txt')
+  })
+
+  test('staged, renamed and ignored lines pass through', () => {
+    const out = compressGitStatus('## main\nM  staged.txt\nR  old.txt -> new.txt\n!! ignored.log\n')
+    expect(out).toContain('M  staged.txt')
+    expect(out).toContain('R  old.txt -> new.txt')
+    expect(out).toContain('!! ignored.log')
+  })
+})
+
+describe('compressGitDiff', () => {
+  const DIFF = [
+    'diff --git a/a.txt b/a.txt',
+    'index 1111111..2222222 100644',
+    '--- a/a.txt',
+    '+++ b/a.txt',
+    '@@ -1,7 +1,7 @@',
+    ' c1',
+    ' c2',
+    ' c3',
+    '-old',
+    '+new',
+    ' c4',
+    ' c5',
+    ' c6',
+    'diff --git a/b.txt b/b.txt',
+    'index 3333333..4444444 100644',
+    '--- a/b.txt',
+    '+++ b/b.txt',
+    '@@ -1 +1,2 @@',
+    ' only',
+    '+added',
+  ].join('\n')
+
+  test('non-diff input passes through', () => {
+    expect(compressGitDiff('hello world')).toBe('hello world')
+  })
+
+  test('header counts every changed line across files', () => {
+    const out = compressGitDiff(DIFF)
+    expect(out.startsWith('2 files changed, +2 -1')).toBe(true)
+  })
+
+  test('per-file summary replaces the index/---/+++ metadata', () => {
+    const out = compressGitDiff(DIFF)
+    expect(out).toContain('a.txt  +1 -1')
+    expect(out).toContain('b.txt  +1 -0')
+    expect(out).not.toContain('index 1111111')
+    expect(out).not.toContain('+++ a/a.txt')
+  })
+
+  test('long context runs collapse to one marker', () => {
+    const out = compressGitDiff(DIFF)
+    // c1,c2,c3 before the change collapse to one line + marker
+    expect(out).toContain('...')
+    const aBlock = out.split('b.txt')[0]
+    expect(aBlock.split('\n').filter((l) => l.startsWith(' c')).length).toBeLessThanOrEqual(2)
+  })
+
+  test('hunk headers survive so line ranges stay readable', () => {
+    const out = compressGitDiff(DIFF)
+    expect(out).toContain('@@ -1,7 +1,7 @@')
+  })
+
+  test('renames show old -> new', () => {
+    const out = compressGitDiff('diff --git a/old.txt b/new.txt\nnew file mode 100644\n@@ -0,0 +1 @@\n+hi\n')
+    expect(out).toContain('old.txt -> new.txt')
+  })
+
+  test('hunk headers always survive context collapse', () => {
+    // A long context-only run far from any change must not eat the @@ anchor.
+    const long = [
+      '@@ -1,200 +1,200 @@',
+      ...Array.from({ length: 100 }, (_, i) => ` ctx ${i}`),
+      '-gone',
+      '+here',
+    ].join('\n')
+    const out = compressGitDiff(`diff --git a/x b/x\nindex 1..2 100644\n--- a/x\n+++ b/x\n${long}`, DEFAULT_CAPS)
+    expect(out).toContain('@@ -1,200 +1,200 @@')
+    expect(out).toContain('-gone')
+    expect(out).toContain('+here')
+  })
+
+  test('binary files get a one-line note', () => {
+    const out = compressGitDiff('diff --git a/x.png b/x.png\nBinary files a/x.png and b/x.png differ\n')
+    expect(out).toContain('x.png  (binary)')
+  })
+
+  test('per-file cap elides with a recovery command', () => {
+    const hunk = Array.from({ length: 200 }, (_, i) => (i % 20 === 0 ? `+changed${i}` : ` context${i}`)).join('\n')
+    const big = `diff --git a/big.txt b/big.txt\n@@ -1,200 +1,200 @@\n${hunk}\n`
+    const out = compressGitDiff(big, { ...DEFAULT_CAPS, maxDiffLinesPerFile: 10 })
+    expect(out).toContain('lines elided - full: git diff -- big.txt')
+  })
+
+  test('total cap summarizes the remaining files', () => {
+    const one = (n: number): string =>
+      `diff --git a/f${n}.txt b/f${n}.txt\n@@ -1 +1 @@\n-old${n}\n+new${n}\n`
+    const big = [one(1), one(2), one(3)].join('')
+    const out = compressGitDiff(big, { ...DEFAULT_CAPS, maxDiffTotalLines: 4 })
+    expect(out).toContain('more file')
+    expect(out).toContain('elided (+')
+  })
+})
+
+describe('compressGrep', () => {
+  test('non match-shaped input passes through', () => {
+    expect(compressGrep('grep: foo: Is a directory')).toBe('grep: foo: Is a directory')
+  })
+
+  test('matches group by file with counts', () => {
+    const out = compressGrep('a.ts:1:foo bar\na.ts:5:foo baz\nb.ts:2:foo qux\n')
+    expect(out).toContain('3 matches in 2 files')
+    expect(out).toContain('a.ts (2):')
+    expect(out).toContain('1: foo bar')
+    expect(out).toContain('b.ts (1):')
+  })
+
+  test('per-file cap elides extra matches', () => {
+    const many = Array.from({ length: 20 }, (_, i) => `x.ts:${i}:hit ${i}`).join('\n')
+    const out = compressGrep(many, { ...DEFAULT_CAPS, maxGrepPerFile: 3 })
+    expect(out).toContain('x.ts (20):')
+    expect(out).toContain('... +17 more in x.ts')
+  })
+
+  test('long lines truncate with a marker', () => {
+    const long = 'y.ts:1:' + 'z'.repeat(500)
+    const out = compressGrep(long, { ...DEFAULT_CAPS, maxLineLen: 50 })
+    const line = out.split('\n').find((l) => l.startsWith('1: '))
+    expect(line !== undefined && line.length <= 54).toBe(true)
+  })
+
+  test('grep warnings are kept verbatim at the end', () => {
+    const out = compressGrep('a.ts:1:hit\ngrep: nope: Permission denied\n')
+    expect(out).toContain('grep: nope: Permission denied')
+  })
+
+  test('total cap reports elided matches', () => {
+    const many = Array.from({ length: 50 }, (_, i) => `f${i % 10}.ts:${i}:hit`).join('\n')
+    const out = compressGrep(many, { ...DEFAULT_CAPS, maxGrepTotal: 5, maxGrepPerFile: 1 })
+    expect(out).toContain('50 matches in 10 files')
+    expect(out).toContain('matches elided')
+  })
+})

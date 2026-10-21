@@ -1,0 +1,6 @@
+{
+  "name": "token-killer",
+  "version": "0.1.0",
+  "description": "Rewrites git status, git diff and recursive grep on the fly into token-compact forms, inside Claude Code. No external binary. Linux PoC.",
+  "author": { "name": "Riaku" }
+}

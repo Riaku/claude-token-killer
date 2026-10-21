@@ -1,0 +1,14 @@
+{
+  "name": "claude-token-killer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Claude Code mod: rewrites git status / git diff / grep into token-compact forms on the fly. Linux PoC.",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "claude plugin test .",
+    "validate": "claude plugin validate ."
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}
