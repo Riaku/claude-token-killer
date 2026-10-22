@@ -30,12 +30,10 @@ To try it without installing anything:
 claude --plugin-dir /path/to/claude-token-killer
 ```
 
-**Requirements:** Claude Code 2.1.287 or later with mods enabled. On builds
-where function hooks are still gated, enable them for the session:
-
-```bash
-CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude
-```
+**Requirements:** Claude Code 2.1.287 or later, where mods are on by
+default; the Desktop app needs 2.1.286 or later. The early-access
+`CLAUDE_CODE_ENABLE_FUNCTION_HOOKS` variable is ignored from 2.1.287 on, so it
+is not needed.
 
 ## What it saves
 
