@@ -216,6 +216,15 @@ describe('compressGrep', () => {
     expect(out).toContain('grep: nope: Permission denied')
   })
 
+  test('a per-file elision is reported once, not again in the total', () => {
+    // Long hits, so the grouped form is the shorter of the two and the markers
+    // are actually in the returned text.
+    const many = Array.from({ length: 5 }, (_, i) => `a.ts:${i}:${'x'.repeat(80)}`).join('\n')
+    const out = compressGrep(many, { ...DEFAULT_CAPS, maxGrepTotal: 10, maxGrepPerFile: 2 })
+    expect(out).toContain('+3 more in a.ts')
+    expect(out).not.toContain('matches elided')
+  })
+
   test('total cap reports elided matches', () => {
     const many = Array.from({ length: 50 }, (_, i) => `f${i % 10}.ts:${i}:hit`).join('\n')
     const out = compressGrep(many, { ...DEFAULT_CAPS, maxGrepTotal: 5, maxGrepPerFile: 1 })

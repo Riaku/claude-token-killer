@@ -15,10 +15,9 @@
 
 import { tokenize } from './plan.ts'
 import { stripAnsi } from './ansi.ts'
+import { UNSAFE, basename } from './shell.ts'
 
 export type VitestPlan = { kind: 'vitest'; command: string }
-
-const UNSAFE = /[|;&<>]|\$\(|\$\{|`|\r|\n|#/
 
 // Braille spinner glyphs (ora/cli-cursor) and block-drawing progress bars.
 const SPINNER = /[\u2800-\u28FF]/
@@ -47,10 +46,6 @@ export const DEFAULT_VITEST_CAPS: VitestCaps = {
 
 /** Re-run command quoted in elision markers; the planner hands it to us. */
 export const VITEST_RERUN = 'vitest run'
-
-function basename(token: string): string {
-  return token.slice(token.lastIndexOf('/') + 1)
-}
 
 const RUNNERS = new Set(['npx', 'pnpm', 'yarn', 'bun', 'bunx'])
 

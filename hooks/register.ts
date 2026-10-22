@@ -37,6 +37,51 @@ import { compressVitest, planVitest } from './vitest.ts'
 
 type Options = Partial<Caps> & { notify?: boolean }
 
+/** Bytes saved before the toast is worth showing. */
+const TOAST_MIN_BYTES = 200
+
+type Finishable = { deny?: unknown; isError?: boolean; result?: unknown }
+
+/**
+ * The tail both handlers share once a command has run: pass through a refusal,
+ * an error or an interrupt; take the text out of either result shape (a harness
+ * may answer with a plain string); keep the compressed text only when it is
+ * smaller, because a smaller wrong answer is worse than a larger right one;
+ * then report the saving. Returns null when the original result must stand.
+ */
+function finish<T extends Finishable>(
+  $: { ui: { toast: (message: string) => void } },
+  r: T,
+  kind: string,
+  notify: boolean,
+  compress: (text: string) => string,
+): T | { result: string } | { result: { stdout: string } } | null {
+  if (r.deny !== undefined || r.isError) return null
+  const maybeInterrupted = r.result as { interrupted?: unknown } | undefined
+  if (maybeInterrupted && typeof maybeInterrupted === 'object' && maybeInterrupted.interrupted === true) return null
+
+  const res = r.result as { stdout?: unknown } | string | undefined
+  const original = typeof res === 'string' ? res : res && typeof res.stdout === 'string' ? res.stdout : null
+  if (original === null || original === '') return null
+
+  const compressed = compress(original)
+  if (compressed === original || compressed.length >= original.length) return null
+
+  const saved = original.length - compressed.length
+  const pct = Math.round((saved / original.length) * 100)
+  if (notify && saved >= TOAST_MIN_BYTES) {
+    try {
+      $.ui.toast(`token-killer: ${kind} -${saved} bytes (${pct}%)`)
+    } catch {
+      // no UI: the compression still stands
+    }
+  }
+
+  if (typeof res === 'string') return { result: compressed }
+  return { result: { ...(res as object), stdout: compressed } }
+}
+
+
 type Plan = { kind: string; command: string }
 
 // Every planner is a pure function of the command string. First match wins;
@@ -147,44 +192,11 @@ export const register: Register = (on, options) => {
 
     const r = await next(plan.command === command ? e : { ...e, command: plan.command })
 
-    // A refusal, a failed command, or an interrupted one: the model needs
-    // the real output, not a compressed one.
-    if (r.deny !== undefined || r.isError) return r
-    const maybeInterrupted = r.result as { interrupted?: unknown } | undefined
-    if (maybeInterrupted && typeof maybeInterrupted === 'object' && maybeInterrupted.interrupted === true) return r
-
-    // The Bash result is { stdout, stderr, interrupted, ... }; a test harness
-    // below us may answer with a plain string. Handle both shapes.
-    const res = r.result as { stdout?: unknown } | string | undefined
-    const original =
-      typeof res === 'string' ? res : res && typeof res.stdout === 'string' ? res.stdout : null
-    if (original === null || original === '') return r
-
     const compress = COMPRESSORS[plan.kind]
     if (!compress) return r
-    const compressed = compress(original, caps, plan.command)
-
-    // Never trade a smaller answer for a wrong one: only replace when the
-    // compressor actually shrank the text.
-    if (compressed === original || compressed.length >= original.length) return r
-
-    const saved = original.length - compressed.length
-    const pct = Math.round((saved / original.length) * 100)
-    if (notify && saved >= 200) {
-      try {
-        $.ui.toast(`token-killer: ${plan.kind} -${saved} bytes (${pct}%)`)
-      } catch {
-        // no UI: the compression still stands
-      }
-    }
-
-    if (typeof res === 'string') return { result: compressed }
-    return { result: { ...(res as object), stdout: compressed } }
+    return finish($, r, plan.kind, notify, (text) => compress(text, caps, plan.command)) ?? r
   })
-    // Fail-open: if this hook throws or overruns its budget, replay the
-    // dispatch unchanged (next(e) replays the run if it already happened,
-    // or runs the original command if not). Worst case is wasted tokens.
-    .catch(($, e, next) => next(e))
+    .catch((_, e, next) => next(e))
 
   // PowerShell tool: Get-ChildItem only, on Windows only. A PowerShell tool
   // running on Linux is out of scope and passes through untouched. Same safety
@@ -203,30 +215,7 @@ export const register: Register = (on, options) => {
 
     const r = await next(e)
 
-    if (r.deny !== undefined || r.isError) return r
-    const maybeInterrupted = r.result as { interrupted?: unknown } | undefined
-    if (maybeInterrupted && typeof maybeInterrupted === 'object' && maybeInterrupted.interrupted === true) return r
-
-    const res = r.result as { stdout?: unknown } | string | undefined
-    const original =
-      typeof res === 'string' ? res : res && typeof res.stdout === 'string' ? res.stdout : null
-    if (original === null || original === '') return r
-
-    const compressed = compressPsDir(original, caps.maxDirEntries, plan.command)
-    if (compressed === original || compressed.length >= original.length) return r
-
-    const saved = original.length - compressed.length
-    const pct = Math.round((saved / original.length) * 100)
-    if (notify && saved >= 200) {
-      try {
-        $.ui.toast(`token-killer: ps-dir -${saved} bytes (${pct}%)`)
-      } catch {
-        // no UI: the compression still stands
-      }
-    }
-
-    if (typeof res === 'string') return { result: compressed }
-    return { result: { ...(res as object), stdout: compressed } }
+    return finish($, r, 'ps-dir', notify, (text) => compressPsDir(text, caps.maxDirEntries, plan.command)) ?? r
   })
-    .catch(($, e, next) => next(e))
+    .catch((_, e, next) => next(e))
 }

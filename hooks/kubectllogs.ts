@@ -15,10 +15,9 @@
 
 import { tokenize } from './plan.ts'
 import { stripAnsi } from './ansi.ts'
+import { UNSAFE, basename } from './shell.ts'
 
 export type KubectlLogsPlan = { kind: 'kubectl-logs'; command: string }
-
-const UNSAFE = /[|;&<>]|\$\(|\$\{|`|\r|\n|#/
 
 /** Flags that consume the following token as their value. */
 const VALUE_FLAGS = new Set([
@@ -48,10 +47,6 @@ const BOOL_FLAGS = new Set([
   '--ignore-errors',
   '--prefix',
 ])
-
-function basename(token: string): string {
-  return token.slice(token.lastIndexOf('/') + 1)
-}
 
 /**
  * Plan a `kubectl logs` call. Compression-only: the command is never rewritten.

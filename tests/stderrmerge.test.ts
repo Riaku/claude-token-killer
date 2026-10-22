@@ -1,5 +1,4 @@
 import { expect, test, tier } from 'claude-code/testing'
-import { planGitLog } from '../hooks/gitlog.ts'
 import { planRewrite, splitStderrMerge, withStderrMerge } from '../hooks/plan.ts'
 import { planKubectlGet } from '../hooks/tables.ts'
 

@@ -26,11 +26,9 @@
 // planners.
 
 import { tokenize } from './plan.ts'
+import { UNSAFE } from './shell.ts'
 
 export type RowsPlan = { kind: 'rows'; command: string }
-
-// Same bail set as the other planners: one command, no shell composition.
-const UNSAFE = /[|;&<>]|\$\(|\$\{|`|\r|\n|#/
 
 function base(token: string): string {
   return token.slice(token.lastIndexOf('/') + 1)

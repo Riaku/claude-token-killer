@@ -17,6 +17,7 @@
 
 import { tokenize } from './plan.ts'
 import { stripAnsi } from './ansi.ts'
+import { UNSAFE } from './shell.ts'
 
 export type GhPlan = { kind: 'gh'; command: string }
 
@@ -27,9 +28,6 @@ export type GhCaps = {
 }
 
 export const GH_DEFAULTS = { maxItems: 50 }
-
-// Same bail set as the Bash planner.
-const UNSAFE = /[|;&<>]|\$\(|\$\{|`|\r|\n|#/
 
 // --json and --template/--jq produce machine or user-defined formats: trimming
 // them would corrupt output someone is parsing. --web opens a browser (no

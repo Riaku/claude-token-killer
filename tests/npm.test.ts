@@ -24,7 +24,6 @@ test('npm, pnpm and yarn installs plan a compressible install', () => {
     const p = planNpmInstall(cmd)
     expect(p).not.toBeNull()
     expect(p!.kind).toBe('npm-install')
-    // Compression-only: the command is handed back untouched.
     expect(p!.command).toBe(cmd.trim())
   }
 })

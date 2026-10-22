@@ -20,11 +20,9 @@
 
 import { tokenize } from './plan.ts'
 import { stripAnsi } from './ansi.ts'
+import { UNSAFE, basename } from './shell.ts'
 
 export type NpmPlan = { kind: 'npm-install'; command: string }
-
-const UNSAFE = /[|;&<>]|\$\(|\$\{|`|\r|\n|#/
-
 
 // Braille spinners (cli-spinners: ⠋⠙⠹...) and block-drawing progress bars.
 const SPINNER = /[\u2800-\u28FF]/
@@ -41,10 +39,6 @@ export const DEFAULT_NPM_CAPS: NpmCaps = {
 
 /** Re-run command quoted in elision markers; the planner hands it to us. */
 export const NPM_RERUN = 'npm install'
-
-function basename(token: string): string {
-  return token.slice(token.lastIndexOf('/') + 1)
-}
 
 const SUBCOMMANDS: Record<string, Set<string>> = {
   npm: new Set(['install', 'i', 'ci']),

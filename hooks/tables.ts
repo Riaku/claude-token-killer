@@ -22,6 +22,7 @@
 
 import { stripRetry } from './ansi.ts'
 import { tokenize } from './plan.ts'
+import { UNSAFE } from './shell.ts'
 
 /**
  * How rows are rendered.
@@ -43,9 +44,6 @@ export const DEFAULT_TABLE_CAPS: { maxRows: number; mode: TableMode } = {
 }
 
 export type TableCaps = typeof DEFAULT_TABLE_CAPS
-
-// Same bail set as the Bash planner.
-const UNSAFE = /[|;&<>]|\$\(|\$\{|`|\r|\n|#/
 
 /**
  * Column starts of a header row. Fields are separated by runs of two or more
@@ -82,11 +80,12 @@ function headerNames(header: string, starts: number[]): string[] {
  * Values padded to their column keep the offset. When a value is longer than
  * its header, the run of spaces that follows it is still the separator, so
  * the remainder of the row is shifted by that much for the columns after it.
+ * Columns that were dropped are skipped rather than parsed.
  */
-function parseRow(line: string, starts: number[], col: number, keep: boolean[]): string[] {
+function parseRow(line: string, starts: number[], keep: boolean[]): string[] {
   const vals: string[] = new Array(starts.length).fill('')
   let shift = 0
-  for (let i = col; i < starts.length; i += 1) {
+  for (let i = 0; i < starts.length; i += 1) {
     if (!keep[i]) continue
     const start = starts[i] + shift
     if (start >= line.length) continue
@@ -219,7 +218,7 @@ function compressTableInner(raw: string, caps: Partial<TableCaps> = DEFAULT_TABL
       if (line.trim() === '') continue
       // A data row is flush with the header; anything indented is not a row.
       if (/^\s/.test(line)) return raw
-      const vals = parseRow(line.replace(/\s+$/, ''), starts, 0, keep)
+      const vals = parseRow(line.replace(/\s+$/, ''), starts, keep)
       if (vals.filter((v) => v !== '').length < 2) return raw
       rows.push(vals)
     }

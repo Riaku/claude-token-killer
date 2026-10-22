@@ -18,11 +18,9 @@
 // model can actually re-run.
 
 import { tokenize } from './plan.ts'
+import { UNSAFE } from './shell.ts'
 
 export type KubectlExecPlan = { kind: 'ls'; command: string }
-
-// Same bail set as the other planners: one command, no shell composition.
-const UNSAFE = /[|;&<>]|\$\(|\$\{|`|\r|\n|#/
 
 const INTERACTIVE = new Set(['-i', '--stdin', '-t', '--tty', '-it', '-ti'])
 

@@ -14,6 +14,7 @@
 
 import { tokenize } from './plan.ts'
 import { stripAnsi } from './ansi.ts'
+import { UNSAFE } from './shell.ts'
 
 export type GoTestPlan = { kind: 'go-test'; command: string }
 
@@ -26,9 +27,6 @@ export type GoTestCaps = {
 }
 
 export const GO_TEST_DEFAULTS = { maxFailures: 20, maxLinesPerFailure: 20 }
-
-// Same bail set as the Bash planner.
-const UNSAFE = /[|;&<>]|\$\(|\$\{|`|\r|\n|#/
 
 // -json is a machine format (`{"Action":"output",...}` per line): trimming it
 // would corrupt anything parsing it. -h/--help speak for themselves.
@@ -65,7 +63,6 @@ export function planGoTest(command: string): GoTestPlan | null {
   }
   return { kind: 'go-test', command }
 }
-
 
 // Per-test lifecycle noise (go 1.24 adds === NAME).
 const LIFECYCLE = /^=== (RUN|PAUSE|CONT|NAME)\b/

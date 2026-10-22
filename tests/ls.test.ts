@@ -23,7 +23,6 @@ test('ls and its common flag bundles plan an ls trim', () => {
     const p = planLs(cmd)
     expect(p).not.toBeNull()
     expect(p!.kind).toBe('ls')
-    // Compression-only: the command is never rewritten.
     expect(p!.command).toBe(cmd)
   }
 })

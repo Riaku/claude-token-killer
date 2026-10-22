@@ -14,6 +14,7 @@
 
 import { tokenize } from './plan.ts'
 import { stripAnsi } from './ansi.ts'
+import { UNSAFE } from './shell.ts'
 
 export type LsPlan = { kind: 'ls'; command: string }
 
@@ -23,10 +24,6 @@ export const DEFAULT_LS_CAPS = {
 }
 
 export type LsCaps = typeof DEFAULT_LS_CAPS
-
-// Same bail set as the Bash planner: pipes, statement separators,
-// redirections, substitutions, backticks, newlines, comments.
-const UNSAFE = /[|;&<>]|\$\(|\$\{|`|\r|\n|#/
 
 // Only flags whose output this parser actually understands. Anything else -
 // `-g`, `-o`, `-w`, `--full-time`, `--time-style` - changes the column
@@ -82,7 +79,6 @@ export function planLs(command: string): LsPlan | null {
   return { kind: 'ls', command }
 }
 
-
 // Unix mode string: type char, nine permission chars, optional ACL marker.
 const MODE = /^[-dlbcps][rwxsStT-]{9}[.@+]?$/
 
@@ -92,7 +88,8 @@ const MONTHS = new Set(['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 
 // human-readable value (`4.9K`) - it is echoed as-is, never re-formatted.
 const LONG_PREFIX = /^(\S+)\s+(\d+)\s+(\S+)\s+(\S+)\s+(\S+)\s+([A-Z][a-z]{2})\s+(\d{1,2})\s+(\d{1,2}:\d{2}(?::\d{2})?|\d{4})\s+(.+)$/
 
-type ParsedEntry = { kind: 'dir' | 'link' | 'file' | 'other'; text: string; name: string }
+/** `text` is the rendered entry; `name` is the path with any `dir/` or `->` suffix removed. */
+type ParsedEntry = { text: string; name: string }
 
 /**
  * Parse one `ls -l` row. The name is everything after the eighth field, so
@@ -102,7 +99,9 @@ type ParsedEntry = { kind: 'dir' | 'link' | 'file' | 'other'; text: string; name
  */
 function parseLongRow(line: string): ParsedEntry | null {
   const t = line.trimEnd()
-  if (!MODE.test(t.split(/\s+/, 1)[0] ?? '')) return null
+  // `split` with a limit always yields at least one element, so index 0 is
+  // present even for an empty line.
+  if (!MODE.test(t.split(/\s+/, 1)[0])) return null
   const m = LONG_PREFIX.exec(t)
   if (!m) return null
   if (!MONTHS.has(m[6])) return null
@@ -111,23 +110,23 @@ function parseLongRow(line: string): ParsedEntry | null {
   const size = m[5]
   const rawName = m[9].trim()
   if (!rawName) return null
-  if (rawName === '.' || rawName === '..') return { kind: 'other', text: '', name: rawName }
+  if (rawName === '.' || rawName === '..') return { text: '', name: rawName }
 
   if (mode.startsWith('d')) {
     const name = rawName.replace(/\/+$/, '')
-    return { kind: 'dir', text: `${name}/`, name }
+    return { text: `${name}/`, name }
   }
   if (mode.startsWith('l')) {
     // `link.txt -> a.txt`: keep both ends, drop the size (it is the target
     // length, not the file's).
     const at = rawName.indexOf(' -> ')
-    if (at < 0) return { kind: 'link', text: rawName, name: rawName }
+    if (at < 0) return { text: rawName, name: rawName }
     const name = rawName.slice(0, at)
-    return { kind: 'link', text: `${name} -> ${rawName.slice(at + 4).trim()}`, name }
+    return { text: `${name} -> ${rawName.slice(at + 4).trim()}`, name }
   }
-  if (mode.startsWith('-')) return { kind: 'file', text: `${rawName} (${size})`, name: rawName }
+  if (mode.startsWith('-')) return { text: `${rawName} (${size})`, name: rawName }
   // Sockets, fifos, devices: name only, size column is not a size.
-  return { kind: 'other', text: rawName, name: rawName }
+  return { text: rawName, name: rawName }
 }
 
 type Section = { dir: string | null; entries: string[] }
@@ -157,7 +156,7 @@ export function compressLs(raw: string, caps: LsCaps = DEFAULT_LS_CAPS, command?
     if (/^total\s+\S+$/.test(t)) continue
 
     // A multi-path or recursive `ls` prints `<path>:` before each block.
-    if (/^[^:]+:$/.test(t) && !MODE.test(t.split(/\s+/, 1)[0] ?? '')) {
+    if (/^[^:]+:$/.test(t) && !MODE.test(t.split(/\s+/, 1)[0])) {
       if (cur.entries.length > 0 || cur.dir !== null) sections.push(cur)
       cur = { dir: t.slice(0, -1), entries: [] }
       continue

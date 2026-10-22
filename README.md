@@ -60,11 +60,13 @@ say they were written to each tool's documented output shape.
 | `kubectl logs` | 16,719 B | 1,652 B | 90% | repeated lines collapsed to `line  xN`, head and tail kept, every error and warning line rescued |
 | `kubectl exec -- ls -la` | 841 B | 194 B | 77% | the inner listing is compacted as if it had run locally |
 | `flux get` | 432 B | 351 B | 19% | tabwriter output compacted |
+| `docker ps` | 1,248 B | 887 B | 29% | padded columns reduced to value rows, one line per container |
 | `gh run view --log` † | 63,911 B | 10,256 B | 84% | one block per job and step, timestamps and runner markers dropped, failures kept verbatim |
 | `gh pr checks` | 102 B | 33 B | 68% | the job URL becomes the job id that `gh run view --job <id> --log` takes |
 | `ps aux` | 6,318 B | 5,636 B | 11% | column padding squeezed, trailing command kept intact, rows capped |
 | `df -h` | 2,201 B | 1,138 B | 48% | same squeeze |
 | `free -h` | 207 B | 106 B | 49% | same squeeze |
+| `docker images` | 181 B | 149 B | 18% | same squeeze; `CREATED` is kept verbatim |
 | `kubectl top pods` | 2,040 B | 1,341 B | 34% | same squeeze |
 | `pytest` | 1,206 B | 941 B | 22% | failure blocks, short-summary lines, and the totals line; progress output dropped |
 | `vitest run` | 1,845 B | 1,504 B | 18% | result lines and failures; worker progress dropped |
@@ -80,9 +82,10 @@ is saved to a file before the mod sees it (see [Limits](#limits)), so the model
 reads that log from the file instead.
 
 The table lists the commands whose output shape is stable and whose saving was
-measured. `rg` reuses the grep row; `gh issue list` and `gh run list` share the
-`gh pr` list compactor; `docker ps`, `docker images` and `gh pr view` are
-compacted but have no row of their own.
+measured. `rg` reuses the grep row, and `gh issue list` and `gh run list` share
+the `gh pr` list compactor. `gh pr view` is compacted but has no row: its output
+is mostly the pull request body, so the saving depends on that body rather than
+on anything this table could generalize.
 
 Savings track output shape more than output size. A directory listing whose
 entries are wrapped by the console width, or a search whose hits are one per

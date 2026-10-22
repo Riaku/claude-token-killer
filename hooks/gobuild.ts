@@ -11,20 +11,14 @@
 
 import { tokenize } from './plan.ts'
 import { stripAnsi } from './ansi.ts'
+import { UNSAFE, basename } from './shell.ts'
 
 export type GoBuildPlan = { kind: 'go-build'; command: string }
-
-const UNSAFE = /[|;&<>]|\$\(|\$\{|`|\r|\n|#/
-
 
 const SUBCOMMANDS = new Set(['build', 'vet'])
 
 /** Verbose/machine flags whose output must not be touched. */
 const BAIL_FLAGS = new Set(['-x', '-n', '-json', '-work', '-v', '-h', '--help', '--version'])
-
-function basename(token: string): string {
-  return token.slice(token.lastIndexOf('/') + 1)
-}
 
 export function planGoBuild(command: string): GoBuildPlan | null {
   const cmd = command.trim()

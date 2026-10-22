@@ -10,17 +10,14 @@
 //   - it carries no flag that would make our compressor wrong (-z, --json,
 //     --stat, --count, --name-only, -o json)
 
+import { UNSAFE, basename, sq } from './shell.ts'
+
 export type PlanKind = 'git-status' | 'git-diff' | 'grep'
 
 export type Plan = {
   kind: PlanKind
   command: string
 }
-
-// Unquoted shell control syntax: a command containing any of it is never
-// rewritten. `$VAR` alone is allowed (plain expansion, the user's own intent);
-// `$( )`, `${ }`, backticks and everything that chains or redirects is not.
-const UNSAFE = /[|;&<>]|\$\(|\$\{|`|\r|\n|#/
 
 /**
  * Split a trailing `2>&1` off a command.
@@ -43,16 +40,6 @@ export function splitStderrMerge(raw: string): { body: string; merged: boolean }
 /** Put a split-off `2>&1` back, last and verbatim, after any added flags. */
 export function withStderrMerge(command: string, merged: boolean): string {
   return merged ? `${command} 2>&1` : command
-}
-
-function basename(token: string): string {
-  return token.slice(token.lastIndexOf('/') + 1)
-}
-
-/** Shell-quote a token only when it is not already shell-safe. */
-function sq(token: string): string {
-  if (/^[A-Za-z0-9_@%+=:,.\/-]+$/.test(token)) return token
-  return "'" + token.replace(/'/g, `'\\''`) + "'"
 }
 
 /**
