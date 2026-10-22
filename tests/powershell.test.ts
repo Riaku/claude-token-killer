@@ -140,11 +140,11 @@ test('entry cap elides with the tk:raw recovery hint', () => {
     (_, i) => `-rw-r--r--     hermes hermes     10/21/2026 23:09            ${i} f${i}.txt`,
   )
   const raw = ['    Directory: /x', 'UnixMode User Group LastWriteTime Size Name', '---- ---- ---- ---- ---- ----', ...rows].join('\n')
-  const out = compressPsDir(raw, 2)
+  const out = compressPsDir(raw, 2, 'Get-ChildItem /x')
   expect(out).toContain('f0.txt')
   expect(out).toContain('f1.txt')
   expect(out).not.toContain('f4.txt')
-  expect(out).toContain('+3 more (raw: re-run with # tk:raw)')
+  expect(out).toContain('+3 more - raw: Get-ChildItem /x # tk:raw')
 })
 
 // ------------------------------------------------------------- e2e hook

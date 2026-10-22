@@ -59,13 +59,13 @@ pod log, and recorded fixtures for the toolchains not installed here.
 | `kubectl logs` | 16,719 B | 1,652 B | 90% | repeated lines collapsed to `line  xN`, head and tail kept, every error and warning line rescued |
 | `kubectl exec -- ls -la` | 841 B | 194 B | 77% | the inner listing is compacted as if it had run locally |
 | `flux get` | 432 B | 351 B | 19% | tabwriter output compacted |
-| `gh run view --log` | 63,911 B | 10,256 B | 84% | one block per job and step, timestamps and runner markers dropped, failures kept verbatim |
+| `gh run view --log` † | 63,911 B | 10,256 B | 84% | one block per job and step, timestamps and runner markers dropped, failures kept verbatim |
 | `gh pr checks` | 102 B | 33 B | 68% | the job URL becomes the job id, which is what re-runs that job |
 | `ps aux` | 6,318 B | 5,636 B | 11% | column padding squeezed, trailing command kept intact, rows capped |
 | `df -h` | 2,201 B | 1,138 B | 48% | same squeeze |
 | `free -h` | 207 B | 106 B | 49% | same squeeze |
 | `kubectl top pods` | 2,040 B | 1,341 B | 34% | same squeeze |
-| `pytest` | 1,206 B | 921 B | 24% | failure blocks and the summary line; progress output dropped |
+| `pytest` | 1,206 B | 941 B | 22% | failure blocks, short-summary lines, and the totals line; progress output dropped |
 | `vitest run` | 1,845 B | 1,504 B | 18% | result lines and failures; worker progress dropped |
 | `playwright test` | 582 B | 475 B | 18% | results and failure blocks; per-worker progress dropped |
 | `cargo test` | 997 B | 522 B | 48% | per-binary result lines and failure blocks |
@@ -73,6 +73,10 @@ pod log, and recorded fixtures for the toolchains not installed here.
 | `go build`, `go vet` | 170 B | 47 B | 72% | module download chatter dropped, repeated diagnostics collapsed, every diagnostic kept |
 | `npm install` | 146 B | 143 B | 2% | summary lines only; a clean non-interactive install has little to trim |
 | `Get-ChildItem` | 1,406 B | 202 B | 86% | `path (N entries):` plus names and sizes; headers, owner, and timestamps dropped |
+
+† Measured with the compressor directly. In a live session an output that size
+is saved to a file before the mod sees it (see [Limits](#limits)), so the model
+reads that log from the file instead.
 
 Savings track output shape more than output size. A directory listing whose
 entries are wrapped by the console width, or a search whose hits are one per
@@ -140,12 +144,13 @@ and no cache to expire.
 
 ## Limits
 
-- **Very large results are only partly visible.** Claude Code caps what a
-  `tool.call` hook receives once a result passes roughly 22 KB: the harness
-  keeps the raw output for on-demand reading and shows the model a short
-  preview. Measured here, a 22.4 KB log compressed end to end, while a 63.9 KB
-  run log was compressed only for its first 226 of 592 lines. Below that
-  threshold the mod sees everything; above it, the harness decides.
+- **Results over 30 KB never reach the mod.** When a command prints more than
+  30,000 bytes, Claude Code writes the output to a file and gives the model a
+  stub of about 2.2 KB that names the file, so there is nothing for the mod to
+  compress. Measured on this repository: a 30,000-byte output arrived whole,
+  while outputs of 31,000, 33,000, 58,000, 64,000, 70,000 and 86,000 bytes all
+  arrived as stubs. A large commit or log is therefore read from that file at
+  full size; only results under the limit benefit.
 - **Native Windows gets no Bash compression.** The gate treats only Windows
   as Windows, so the Bash handlers stay inert there; under WSL the platform
   reports Linux and they apply. The PowerShell handler covers the native case.
@@ -195,6 +200,7 @@ claude plugin configure token-killer
 | `maxGrepPerFile` | 8 | kept matches per file |
 | `maxGrepTotal` | 150 | kept matches across all files |
 | `maxLineLen` | 200 | truncate longer match lines |
+| `maxDirEntries` | 200 | entries listed per directory before elision |
 | `notify` | `true` | show a toast with bytes saved when at least 200 bytes were saved |
 
 ## Develop

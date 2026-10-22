@@ -113,7 +113,11 @@ const BLOCK_END = /^(---- .* stdout ----|failures:|test result:)/
  * Returns the input unchanged when it does not look like cargo test output,
  * and never returns something longer than the input.
  */
-export function compressCargoTest(text: string, caps: CargoTestCaps = {}): string {
+export function compressCargoTest(
+  text: string,
+  caps: CargoTestCaps = {},
+  rerun: string = 'cargo test',
+): string {
   const maxFailures = caps.maxFailures ?? CARGO_TEST_DEFAULTS.maxFailures
   const maxLines = caps.maxLinesPerFailure ?? CARGO_TEST_DEFAULTS.maxLinesPerFailure
 
@@ -156,6 +160,7 @@ export function compressCargoTest(text: string, caps: CargoTestCaps = {}): strin
       if (body.length > maxLines) {
         out.push(...body.slice(0, maxLines))
         out.push(
+          // Narrower than ${rerun} on purpose: one test, exact, unfiltered.
           `... +${body.length - maxLines} lines elided - raw: cargo test ${sq(open[1])} -- --exact # tk:raw`,
         )
       } else {
@@ -188,10 +193,10 @@ export function compressCargoTest(text: string, caps: CargoTestCaps = {}): strin
   }
 
   if (passingElided > 0) {
-    out.push(`... +${passingElided} passing test${passingElided === 1 ? '' : 's'} elided - raw: cargo test # tk:raw`)
+    out.push(`... +${passingElided} passing test${passingElided === 1 ? '' : 's'} elided - raw: ${rerun} # tk:raw`)
   }
   if (blocksElided > 0) {
-    out.push(`... +${blocksElided} more failing test${blocksElided === 1 ? '' : 's'} elided - raw: cargo test # tk:raw`)
+    out.push(`... +${blocksElided} more failing test${blocksElided === 1 ? '' : 's'} elided - raw: ${rerun} # tk:raw`)
   }
   if (progressDropped > 0 && out.length === 0) {
     // Everything was progress: say so rather than returning nothing.

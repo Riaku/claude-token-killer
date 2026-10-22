@@ -1,4 +1,4 @@
 {
-  "description": "token-killer: one tool.call hook on Bash that rewrites git status / git diff / grep into compact forms and compresses their output in flight.",
+  "description": "token-killer: one tool.call hook on Bash. It rewrites git status, git diff, git show and recursive grep into cheaper forms, then compresses the output of 23 command families in flight: repository state, search results, directory listings, cluster tables and logs, CI logs, and test runs.",
   "modules": ["./register.ts"]
 }

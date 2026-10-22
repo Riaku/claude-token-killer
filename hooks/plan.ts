@@ -137,8 +137,17 @@ function planGit(tokens: string[]): Plan | null {
 
   const sub = tokens[i]
   const rest = tokens.slice(i + 1)
-  const rebuild = (extra: string[]): string =>
-    ['git', ...global, sub, ...rest, ...extra].map(sq).join(' ')
+  const rebuild = (extra: string[]): string => {
+    // Anything after a bare `--` is a pathspec, so `git status -- src
+    // --porcelain=v1 -b` asks git about a file literally named `--porcelain=v1`
+    // and the rewrite has no effect. Keep the added flags before the separator.
+    const sep = rest.indexOf('--')
+    const argv =
+      sep === -1
+        ? ['git', ...global, sub, ...rest, ...extra]
+        : ['git', ...global, sub, ...rest.slice(0, sep), ...extra, ...rest.slice(sep)]
+    return argv.map(sq).join(' ')
+  }
 
   if (sub === 'status') {
     if (rest.some((t) => t === '-z' || t === '--json' || t.startsWith('--porcelain=2'))) return null

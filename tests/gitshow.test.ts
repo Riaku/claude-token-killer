@@ -345,3 +345,7 @@ test('the default diff caps match the mod-wide ones', () => {
   expect(DEFAULT_SHOW_CAPS.maxDiffLinesPerFile).toBeGreaterThan(0)
   expect(DEFAULT_SHOW_CAPS.maxDiffTotalLines).toBeGreaterThan(DEFAULT_SHOW_CAPS.maxDiffLinesPerFile)
 })
+
+test('--no-color is inserted before a pathspec separator', () => {
+  expect(planGitShow('git show HEAD -- README.md')?.command).toBe('git show HEAD --no-color -- README.md')
+})
