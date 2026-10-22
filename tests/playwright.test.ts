@@ -3,6 +3,26 @@ import { DEFAULT_PLAYWRIGHT_CAPS, compressPlaywright, planPlaywright } from '../
 
 tier('user')
 
+test('a failure cut at the line cap says how much it dropped', () => {
+  // Silently truncating a stack trace is the one thing a failure block must not
+  // do: the model reads it as complete.
+  const body = Array.from({ length: 60 }, (_, i) => `    at frame${i} (a.spec.ts:${i}:1)`)
+  const raw = [
+    'Running 1 test using 1 worker',
+    '',
+    '  1) [chromium] › tests/a.spec.ts:9:1 › submits form ─────────',
+    '',
+    ...body,
+    '',
+    '  1 failed',
+    '',
+  ].join('\n')
+  const out = compressPlaywright(raw)
+  expect(out).toContain('lines of this failure elided')
+  expect(out).toContain('# tk:raw')
+  expect(out).not.toContain('frame59')
+})
+
 const FIXTURE = [
   'Running 4 tests using 2 workers',
   '',

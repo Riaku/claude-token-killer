@@ -1,23 +1,14 @@
-// token-killer: tool.call hooks that rewrite token-hungry commands into
-// compact forms on the way out, and compress their stdout on the way back
-// in - inside the Claude Code process, no external binary. The Bash handler
-// runs everywhere except Windows (non-Windows is treated as Linux); the
-// PowerShell handler (Get-ChildItem) is Windows-only. Everything else is a
-// no-op.
+// token-killer: the mod's tool.call hooks. Rewrite a token-hungry command into
+// a compact form before it runs, then compress its stdout on the way back, in
+// the Claude Code process, with no external binary and no spawn.
 //
-// Coverage: git status / diff / show / log, recursive grep (plus rg and
-// git grep), ls, find, docker ps, kubectl get (+ -o wide), kubectl logs,
-// kubectl exec -- ls -l, flux get, pytest, vitest, playwright test,
-// npm|pnpm install, cargo test, go test, go build|vet, gh pr|issue|run list,
-// gh run view --log, gh pr checks/view, and the ps|df|free|kubectl top|
-// docker images listings.
+// This module owns the planner chain, the platform gate, and the fail-open
+// boundary. Per-command knowledge lives in the per-command modules; the file map
+// in README.md is the index.
 //
-// A trailing `2>&1` is understood: it is split off the command tail, planned
-// without it, and re-appended verbatim after any added flags.
-//
-// Fail-open by design: a compressor that throws simply lets the original
-// output through (the engine skips a throwing hook). Unlike a redactor, the
-// worst case here is wasted tokens, never lost safety.
+// Fail-open by design: the handler catches and calls `next`, so the original
+// output reaches the model. Unlike a redactor, the worst case here is wasted
+// tokens, never lost safety.
 
 import type { Register } from 'claude-code'
 import { DEFAULT_CAPS, compressGitDiff, compressGitStatus, compressGrep, type Caps } from './compress.ts'
@@ -32,7 +23,7 @@ import { compressGhRunView, planGhRunView } from './ghrunview.ts'
 import { planGitGrep, planRg } from './grepalias.ts'
 import { planKubectlExec } from './kubectlexec.ts'
 import { compressRows, planRows } from './sysinfo.ts'
-import { compressGitLog, planGitLog } from './gitlog.ts'
+import { compressGitLog, DEFAULT_LOG_CAPS, planGitLog } from './gitlog.ts'
 import { compressGitShow, planGitShow } from './gitshow.ts'
 import { compressGoBuild, planGoBuild } from './gobuild.ts'
 import { compressGoTest, planGoTest } from './gotest.ts'
@@ -95,7 +86,7 @@ const COMPRESSORS: Record<string, (text: string, caps: Caps, command: string) =>
   'git-status': (t, c, cmd) => compressGitStatus(t, c, cmd),
   'git-diff': (t, c, cmd) => compressGitDiff(t, c, cmd),
   'git-show': (t) => compressGitShow(t),
-  'git-log': (t, _c, cmd) => compressGitLog(t, { maxEntries: 50, rerun: cmd }),
+  'git-log': (t, _c, cmd) => compressGitLog(t, { ...DEFAULT_LOG_CAPS, rerun: cmd }),
   grep: (t, c, cmd) => compressGrep(t, c, cmd),
   ls: (t, c, cmd) => compressLs(t, { maxEntries: c.maxDirEntries }, cmd),
   find: (t, c, cmd) => compressFind(t, { maxEntries: c.maxDirEntries }, cmd),
@@ -115,7 +106,7 @@ const COMPRESSORS: Record<string, (text: string, caps: Caps, command: string) =>
   // package selection instead of a generic `go test -v`.
   'cargo-test': (t, _c, cmd) => compressCargoTest(t, undefined, cmd),
   'go-test': (t, _c, cmd) => compressGoTest(t, undefined, cmd),
-  'go-build': (t, _c, cmd) => compressGoBuild(t, undefined, cmd),
+  'go-build': (t) => compressGoBuild(t),
   gh: (t, _c, cmd) => compressGh(t, {}, cmd),
 }
 
@@ -132,19 +123,14 @@ export const register: Register = (on, options) => {
     maxDirEntries: opts.maxDirEntries ?? DEFAULT_CAPS.maxDirEntries,
   }
 
-  // Platform detection, zero-spawn everywhere:
+  // Platform gate: one memoized in-process env read, no spawn. `OS=Windows_NT`
+  // is set in every NT-family process (native cmd, PowerShell, Git Bash, Cygwin)
+  // and unset on Linux and macOS, so "not Windows" is treated as Linux. That is
+  // safe because the compressors are format-driven with a never-inflate guard:
+  // an unexpected platform's output fails to match and passes through unchanged.
   //
-  // Windows answers `OS=Windows_NT` in every NT-family process env
-  // (native cmd/PowerShell, Git Bash/MSYS, Cygwin all pass it through;
-  // Linux/macOS leave it unset). That single in-process env read is the
-  // whole gate: NOT Windows is treated as Linux. This is safe because the
-  // compressors are format-driven with a never-inflate guard, and git
-  // porcelain / grep output is platform-identical - an unexpected
-  // platform's output simply fails to match and passes through unchanged.
-  // No `uname`, no `cmd.exe`, no spawn on any path.
-  //
-  // The sandbox forbids passing `$` to helpers, so each gate is inlined
-  // at its call site over these memoized answers.
+  // The sandbox forbids passing `$` to helpers, so each gate is inlined at its
+  // call site over these memoized answers.
   let windows: boolean | null = null
   let linux: boolean | null = null
 
@@ -200,11 +186,10 @@ export const register: Register = (on, options) => {
     // or runs the original command if not). Worst case is wasted tokens.
     .catch(($, e, next) => next(e))
 
-  // PoC: PowerShell tool, Get-ChildItem only. Windows only, by explicit
-  // choice: PowerShell running on Linux (opt-in flag) is out of scope and
-  // passes through untouched. Same safety rules as the Bash side: refusal
-  // / error / interrupted pass through, and compression is only applied
-  // when it actually shrinks the output.
+  // PowerShell tool: Get-ChildItem only, on Windows only. A PowerShell tool
+  // running on Linux is out of scope and passes through untouched. Same safety
+  // rules as the Bash side: refusal, error and interrupt pass through, and
+  // compression applies only when it shrinks the output.
   on('tool.call', { tool: 'PowerShell' }, async ($, e, next) => {
     const command = (e as { command?: unknown }).command
     if (typeof command !== 'string') return next(e)

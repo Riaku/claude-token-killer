@@ -1,10 +1,53 @@
 import { describe, expect, test } from 'claude-code/testing'
 import { DEFAULT_CAPS, compressGitDiff, compressGitStatus, compressGrep } from '../hooks/compress.ts'
 
+describe('compressGitDiff', () => {
+  test('a warning above the first block survives', () => {
+    // `git diff` run through the hook has stderr merged in, so its warnings are
+    // on this stream. Dropping them made a broken invocation look complete.
+    const raw = [
+      'warning: LF will be replaced by CRLF in a.txt.',
+      'The file will have its original line endings in your working directory',
+      'diff --git a/a.txt b/a.txt',
+      'index 1111111..2222222 100644',
+      '--- a/a.txt',
+      '+++ b/a.txt',
+      '@@ -1 +1 @@',
+      '-old',
+      '+new',
+      '',
+    ].join('\n')
+    const out = compressGitDiff(raw)
+    expect(out.startsWith('warning: LF will be replaced by CRLF in a.txt.')).toBe(true)
+    expect(out).toContain('1 file changed, +1 -1')
+    expect(out.length).toBeLessThan(raw.length)
+  })
+
+  test('a hunk kept in full does not end in an elision marker', () => {
+    // The trailing newline leaves an empty element in the block; it used to be
+    // counted as dropped context, so every complete hunk ended in `...`.
+    const raw = [
+      'diff --git a/a.txt b/a.txt',
+      'index 1111111..2222222 100644',
+      '--- a/a.txt',
+      '+++ b/a.txt',
+      '@@ -1,2 +1,2 @@',
+      ' ctx',
+      '-old',
+      '+new',
+      '',
+    ].join('\n')
+    expect(compressGitDiff(raw).trimEnd().endsWith('...')).toBe(false)
+  })
+})
+
 describe('compressGitStatus', () => {
-  test('empty porcelain reads as clean', () => {
-    expect(compressGitStatus('')).toBe('clean - nothing to commit')
-    expect(compressGitStatus('\n\n')).toBe('clean - nothing to commit')
+  // `-b` prints the branch header on every run, so no lines means the command
+  // produced nothing. Inventing a sentence would exceed the input and the
+  // caller's length check would discard it.
+  test('empty porcelain is passed through untouched', () => {
+    expect(compressGitStatus('')).toBe('')
+    expect(compressGitStatus('\n\n')).toBe('\n\n')
   })
 
   test('branch header becomes * branch', () => {

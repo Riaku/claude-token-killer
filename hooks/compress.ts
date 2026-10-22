@@ -1,6 +1,7 @@
-// Token compressors: pure string -> string transforms, ported in spirit from
-// rtk / ptk's output filters. No I/O, no engine types: every function here is
-// testable in isolation and never inflates its input (callers compare lengths).
+// Token compressors: pure string -> string transforms, the same idea as rtk and
+// ptk's output filters, reimplemented in-process. No I/O, no engine types: every
+// function here is testable in isolation and never inflates its input (callers
+// compare lengths).
 
 import { stripRetry } from './ansi.ts'
 
@@ -17,7 +18,9 @@ export type Caps = {
   maxGrepTotal: number
   /** grep: truncate any single match line longer than this. */
   maxLineLen: number
-  /** PowerShell Get-ChildItem: kept entries per directory section. */
+  /** ls, find and Get-ChildItem: kept entries before an elision line. The ls
+   * and find compressors spend one budget across every directory; the
+   * PowerShell handler applies it to each directory section. */
   maxDirEntries: number
 }
 
@@ -38,9 +41,10 @@ export const DEFAULT_CAPS: Caps = {
  * becomes `* branch [ahead N, behind M]`, XY lines pass through (they are
  * already one line per file), and untracked listings are capped.
  *
- * An empty porcelain means a clean tree; say so in one line rather than
- * returning nothing (an agent reading empty stdout cannot tell "clean" from
- * "the command produced nothing").
+ * `-b` puts the branch header on every run, so the only way to get no lines is
+ * for the command to produce no output at all. That is passed through: writing
+ * `clean - nothing to commit` would make the result longer than the input, and
+ * the caller's length check would throw it away.
  */
 export function compressGitStatus(porcelain: string, caps: Caps = DEFAULT_CAPS, command?: string): string {
   return stripRetry(porcelain, (text) => compressGitStatusInner(text, caps, command))
@@ -48,7 +52,7 @@ export function compressGitStatus(porcelain: string, caps: Caps = DEFAULT_CAPS, 
 
 function compressGitStatusInner(porcelain: string, caps: Caps = DEFAULT_CAPS, command?: string): string {
   const lines = porcelain.split('\n').filter((l) => l.trim() !== '')
-  if (lines.length === 0) return 'clean - nothing to commit'
+  if (lines.length === 0) return porcelain
 
   const out: string[] = []
   let untrackedShown = 0
@@ -170,13 +174,23 @@ export function compressGitDiff(text: string, caps: Caps = DEFAULT_CAPS, command
 }
 
 function compressGitDiffInner(text: string, caps: Caps = DEFAULT_CAPS, command?: string): string {
-  if (!text.includes('diff --git ')) return text
+  const firstBlock = text.indexOf('diff --git ')
+  if (firstBlock < 0) return text
   const files = splitDiffBlocks(text)
   if (files.length === 0) return text
 
   const totalAdded = files.reduce((n, f) => n + f.added, 0)
   const totalRemoved = files.reduce((n, f) => n + f.removed, 0)
-  const out: string[] = [`${files.length} file${files.length === 1 ? '' : 's'} changed, +${totalAdded} -${totalRemoved}`]
+  // Anything above the first block is cursor state plus whatever stderr said:
+  // `warning: LF will be replaced by CRLF`, `warning: unable to access ...`,
+  // `git: 'foo' is not a git command`. The hook re-applies `2>&1`, so those
+  // lines arrive on this stream, and they are the only sign of a broken
+  // invocation - dropping them left output that looked complete.
+  const preamble = text.slice(0, firstBlock).split('\n').filter((line) => line.trim() !== '')
+  const out: string[] = [
+    ...preamble,
+    `${files.length} file${files.length === 1 ? '' : 's'} changed, +${totalAdded} -${totalRemoved}`,
+  ]
 
   let budget = caps.maxDiffTotalLines
   let elidedFiles = 0
@@ -197,9 +211,14 @@ function compressGitDiffInner(text: string, caps: Caps = DEFAULT_CAPS, command?:
       continue
     }
     out.push(`${f.path}  +${f.added} -${f.removed}`)
-    budget -= 1
+    budget -= 2 // the blank separator and this summary line both cost a line
 
-    const kept = collapseContext(f.hunkLines, 1)
+    // The block ends with the empty element created by the trailing newline;
+    // collapseContext would mark that element as dropped and print `...` for a
+    // hunk it kept in full.
+    let end = f.hunkLines.length
+    while (end > 0 && f.hunkLines[end - 1] === '') end -= 1
+    const kept = collapseContext(f.hunkLines.slice(0, end), 1)
     if (kept.length > caps.maxDiffLinesPerFile) {
       const shown = kept.slice(0, caps.maxDiffLinesPerFile)
       const hidden = kept.length - shown.length

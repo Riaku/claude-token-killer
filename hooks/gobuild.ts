@@ -39,24 +39,13 @@ export function planGoBuild(command: string): GoBuildPlan | null {
   return { kind: 'go-build', command: cmd }
 }
 
-export type GoBuildCaps = {
-  /** cap on repeated identical lines before they collapse. */
-  maxRepeats: number
-}
-
-export const DEFAULT_GO_BUILD_CAPS: GoBuildCaps = { maxRepeats: 200 }
-
 const CHATTER = /^go: (?:downloading|finding|extracting)\b/
 
 /**
  * Compress `go build`/`go vet` output: drop module-fetch chatter, collapse
  * consecutive identical lines. Diagnostics pass through untouched.
  */
-export function compressGoBuild(
-  text: string,
-  caps: GoBuildCaps = DEFAULT_GO_BUILD_CAPS,
-  _rerun: string = 'go build ./...',
-): string {
+export function compressGoBuild(text: string): string {
   const lines = stripAnsi(text).split(/\r\n|\r|\n/)
   const out: string[] = []
   let last = ''
@@ -73,7 +62,7 @@ export function compressGoBuild(
     if (line.trim() === '') continue
     if (CHATTER.test(line.trim())) continue
     if (line === last) {
-      if (repeat < caps.maxRepeats) repeat += 1
+      repeat += 1 // count them all: a cap on the counter reports `x200` for 300 lines
       continue
     }
     flush()

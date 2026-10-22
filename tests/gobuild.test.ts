@@ -58,6 +58,13 @@ test('module-fetch chatter is dropped, diagnostics are kept', () => {
   expect(out.length).toBeLessThan(raw.length)
 })
 
+test('the count is the real number of repeats, not a ceiling', () => {
+  // 300 identical warnings used to be reported as `x200`, because the counter
+  // stopped at the cap and the cap defaulted to 200.
+  const raw = Array.from({ length: 300 }, () => './foo.go:1:1: undefined: x').join('\n')
+  expect(compressGoBuild(raw)).toBe('./foo.go:1:1: undefined: x  x300')
+})
+
 test('repeated identical diagnostics collapse to a count', () => {
   const raw = Array.from({ length: 5 }, () => './foo.go:12:5: undefined: bar').join('\n')
   const out = compressGoBuild(raw)
