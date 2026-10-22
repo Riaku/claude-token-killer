@@ -96,14 +96,14 @@ if (!plan) {
   failed += 1
   console.log('FAIL planPowerShell did not recognise Get-ChildItem')
 } else {
-  check('Get-ChildItem', rawDir, (t) => compressPsDir(t, 200, plan.command), ['entry-000.txt', 'entry-149.txt'])
+  check('Get-ChildItem', rawDir, (t) => compressPsDir(t, { maxEntries: 200 }, plan.command), ['entry-000.txt', 'entry-149.txt'])
   // CRLF is what a Windows host produces; a parser that only splits on \n turns
   // every row into one line and either bails or mangles it.
-  check('Get-ChildItem (CRLF)', rawDir.replace(/\r?\n/g, '\r\n'), (t) => compressPsDir(t, 200, plan.command), [
+  check('Get-ChildItem (CRLF)', rawDir.replace(/\r?\n/g, '\r\n'), (t) => compressPsDir(t, { maxEntries: 200 }, plan.command), [
     'entry-000.txt',
     'entry-149.txt',
   ])
-  const capped = compressPsDir(rawDir, 20, "Get-ChildItem 'C:\\logs'")
+  const capped = compressPsDir(rawDir, { maxEntries: 20 }, "Get-ChildItem 'C:\\logs'")
   if (capped.includes("Get-ChildItem 'C:\\logs' # tk:raw")) console.log('ok   cap hint quotes the command')
   else {
     failed += 1
@@ -115,7 +115,7 @@ if (!plan) {
 const listRaw = run(
   `pwsh -NoProfile -Command "Get-ChildItem -Force -LiteralPath '${root}' | Select-Object -First 2 | Format-List | Out-String -Width 200"`,
 )
-const listOut = compressPsDir(listRaw, 200, 'Get-ChildItem . | Format-List')
+const listOut = compressPsDir(listRaw, { maxEntries: 200 }, 'Get-ChildItem . | Format-List')
 if (listOut === listRaw || listOut.length <= listRaw.length) console.log('ok   Format-List output is left alone')
 else {
   failed += 1

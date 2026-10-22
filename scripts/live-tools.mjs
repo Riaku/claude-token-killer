@@ -121,7 +121,7 @@ if (!pathPlan || pathPlan.command.indexOf('--porcelain') > pathPlan.command.inde
 const logPlan = planGitLog('git log')
 const logRaw = run(logPlan.command, repo)
 const subjects = [...logRaw.matchAll(/^\s+commit [0-9a-f]{7,40}|^commit ([0-9a-f]{7,40})/gm)].length
-check('git log', logRaw, (t) => compressGitLog(t, { maxEntries: 50, rerun: logPlan.command }), [
+check('git log', logRaw, (t) => compressGitLog(t, { maxEntries: 50 }, logPlan.command), [
   'commit 11: add f11',
   'commit 0: add f0',
   'first commit',
@@ -190,7 +190,7 @@ if (has('go')) {
 
   const buildPlan = planGoBuild('go build ./...')
   const buildRaw = run('go build ./...', go)
-  check('go build ./...', buildRaw, (t) => compressGoBuild(t, undefined, buildPlan.command), [
+  check('go build ./...', buildRaw, (t) => compressGoBuild(t), [
     'broken/broken.go',
     'cannot use',
   ])
