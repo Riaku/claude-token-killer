@@ -125,7 +125,7 @@ function cell(s: string | undefined): string {
  * layout for tab-separated output). Anything that does not parse cleanly is
  * returned unchanged - a half-understood table is worse than a verbose one.
  */
-export function compressGh(text: string, caps: GhCaps = {}): string {
+export function compressGh(text: string, caps: GhCaps = {}, command = ''): string {
   const maxItems = caps.maxItems ?? GH_DEFAULTS.maxItems
 
   const clean = stripAnsi(text).replace(/\r\n/g, '\n').replace(/\r/g, '\n')
@@ -273,9 +273,11 @@ export function compressGh(text: string, caps: GhCaps = {}): string {
   }
 
   if (items.length > maxItems) {
-    out.push(
-      `... +${items.length - maxItems} more items elided - raw: ${RERUN[kind]} --limit ${items.length} # tk:raw`,
-    )
+    // Re-run the command the model actually used, with the limit raised: the
+    // base command carries its own filters (`--state open`, `--author me`), and
+    // dropping them would answer a different question.
+    const base = (command || RERUN[kind]).replace(/\s+--limit(=\s*|\s+)\S+/g, '')
+    out.push(`... +${items.length - maxItems} more items elided - raw: ${base} --limit ${items.length} # tk:raw`)
   }
 
   const result = out.join('\n')

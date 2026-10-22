@@ -131,11 +131,27 @@ describe('compressGrep', () => {
   })
 
   test('matches group by file with counts', () => {
-    const out = compressGrep('a.ts:1:foo bar\na.ts:5:foo baz\nb.ts:2:foo qux\n')
-    expect(out).toContain('3 matches in 2 files')
-    expect(out).toContain('a.ts (2):')
-    expect(out).toContain('1: foo bar')
-    expect(out).toContain('b.ts (1):')
+    // Paths repeat on every raw line, so grouping pays off once a file has a
+    // few hits - which is what a real recursive grep looks like.
+    const hits = (file: string) =>
+      Array.from({ length: 6 }, (_, i) => `${file}:${i + 1}:const valueNumber${i} = computeSomething(input${i})`).join('\n')
+    const out = compressGrep(`${hits('hooks/ghrunview.ts')}\n${hits('hooks/kubectllogs.ts')}\n`)
+    expect(out).toContain('12 matches in 2 files')
+    expect(out).toContain('hooks/ghrunview.ts (6):')
+    expect(out).toContain('1: const valueNumber0 = computeSomething(input0)')
+    expect(out).toContain('hooks/kubectllogs.ts (6):')
+  })
+
+  test('a result that would grow is left alone', () => {
+    // Two short hits cost more as a grouped listing than as raw grep output.
+    const raw = 'a.ts:1:foo\na.ts:2:bar\n'
+    expect(compressGrep(raw, undefined, 'grep -rn foo .')).toBe(raw)
+  })
+
+  test('elision hints quote the command that ran', () => {
+    const many = Array.from({ length: 40 }, (_, i) => `x.ts:${i}:hit ${i}`).join('\n')
+    const out = compressGrep(many, { ...DEFAULT_CAPS, maxGrepPerFile: 3 }, 'rg -n foo hooks/')
+    expect(out).toContain('(raw: rg -n foo hooks/ # tk:raw)')
   })
 
   test('per-file cap elides extra matches', () => {

@@ -6,6 +6,8 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "claude plugin test .",
+    "test:live": "node --experimental-strip-types scripts/live-tools.mjs",
+    "test:live:windows": "node --experimental-strip-types scripts/live-windows.mjs",
     "validate": "claude plugin validate ."
   },
   "devDependencies": {
