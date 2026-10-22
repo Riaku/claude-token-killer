@@ -8,13 +8,18 @@ This is the Claude-native take on [rtk](https://github.com/rtk-ai/rtk) and
 [PTK](https://github.com/Riaku/ptk) — same idea, executed inside Claude Code
 instead of in a wrapper around it.
 
-The mod works at two points in a tool call:
+You get two kinds of saving, at two points in a tool call:
 
 - **Before the call runs**, four commands are rewritten into forms whose output
   is cheaper to produce and to parse.
 - **After it runs**, the output of the commands in [What it saves](#what-it-saves)
   is compacted: repository state and search results, cluster tables, CI logs,
   and test runs.
+
+Both halves leave a way back: an elision line names the command to re-run
+tagged `# tk:raw`, which runs it as the mod wrote it, untrimmed. You get every
+line back in the compact format the mod chose, not the original pretty-printed
+one.
 
 ## Install
 
@@ -210,6 +215,14 @@ claude plugin configure token-killer
 | `maxLineLen` | 200 | truncate longer match lines |
 | `maxDirEntries` | 200 | entries listed before elision; `ls` and `find` spend one budget across all directories, `Get-ChildItem` applies it per directory |
 | `notify` | `true` | show a toast with bytes saved when at least 200 bytes were saved |
+
+Those eight are the limits worth tuning: they decide how much of a common
+command's output you see. Every other limit is fixed in the hook: the height of
+a pytest failure block, the widths of a vitest or playwright summary, the row
+count of a table, where npm, cargo and go output is cut, how much of a pod log's
+tail is kept. Each is set so that ordinary output for that command passes
+through whole; when output is not ordinary, the elision line names the command
+that re-runs it.
 
 ## Develop
 
