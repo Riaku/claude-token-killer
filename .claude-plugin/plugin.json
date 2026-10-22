@@ -2,5 +2,62 @@
   "name": "token-killer",
   "version": "0.1.0",
   "description": "Rewrites git status, git diff, git show and recursive grep into token-compact forms, and compresses the output of 23 command families (git, grep/rg, ls, find, docker, kubectl, flux, gh, pytest, vitest, playwright, npm, cargo, go, ps/df/free) inside Claude Code. No external binary, zero process spawns.",
-  "author": { "name": "Riaku" }
+  "author": { "name": "Riaku" },
+  "userConfig": {
+    "maxStatusFiles": {
+      "type": "number",
+      "title": "Untracked files",
+      "description": "Untracked files listed before the rest are elided with a count.",
+      "default": 200,
+      "min": 1
+    },
+    "maxDiffLinesPerFile": {
+      "type": "number",
+      "title": "Diff lines per file",
+      "description": "Kept hunk lines per file in a large git diff.",
+      "default": 60,
+      "min": 1
+    },
+    "maxDiffTotalLines": {
+      "type": "number",
+      "title": "Diff lines in total",
+      "description": "Kept diff lines across every file in one diff.",
+      "default": 400,
+      "min": 1
+    },
+    "maxGrepPerFile": {
+      "type": "number",
+      "title": "Matches per file",
+      "description": "Kept matches per file before the rest are counted.",
+      "default": 8,
+      "min": 1
+    },
+    "maxGrepTotal": {
+      "type": "number",
+      "title": "Matches in total",
+      "description": "Kept matches across every file in one search.",
+      "default": 150,
+      "min": 1
+    },
+    "maxLineLen": {
+      "type": "number",
+      "title": "Match line length",
+      "description": "Longer match lines are truncated at this many characters.",
+      "default": 200,
+      "min": 40
+    },
+    "maxDirEntries": {
+      "type": "number",
+      "title": "Directory entries",
+      "description": "Entries listed per directory before the rest are elided with a count.",
+      "default": 200,
+      "min": 1
+    },
+    "notify": {
+      "type": "boolean",
+      "title": "Savings toast",
+      "description": "Show a toast with the bytes saved when a call saved at least 200 bytes.",
+      "default": true
+    }
+  }
 }
