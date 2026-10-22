@@ -86,6 +86,9 @@ export function planPytest(command: string): PytestPlan | null {
     }
     // Machine-readable formats our compressor would mangle.
     if (name === '--json' || name === '--json-report' || name === '--junit-xml') return null
+    // Listing modes: the output is the list, so a summary keeps nothing useful.
+    if (t === '--co' || t === '--collect-only' || t === '--fixtures' || t === '--markers') return null
+    if (t === '--setup-plan' || t === '--setup-show') return null
     if (t === '--help' || t === '-h' || t === '--version') return null
   }
   return { kind: 'pytest', command: cmd }
@@ -203,7 +206,16 @@ export function compressPytest(
       continue
     }
     if (section === 'summary') {
-      if (/^(FAILED|ERROR)\s/.test(t)) summary.push(t)
+      if (/^(FAILED|ERROR)\s/.test(t)) {
+        summary.push(t)
+        continue
+      }
+      // pytest 9 ends the run with a bare `2 failed, 43 passed in 0.02s`
+      // after the short-summary section instead of a `===` banner. Dropping
+      // that line drops the totals, which is the one line a failing run is
+      // read for.
+      const bare = renderCounts(t)
+      if (bare) counts = bare
       continue
     }
     if (section === 'warn') {

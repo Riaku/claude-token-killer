@@ -24,7 +24,7 @@ describe('planRewrite: git status', () => {
   test('bare git status rewrites to porcelain with branch', () => {
     const p = planRewrite('git status')
     expect(p?.kind).toBe('git-status')
-    expect(p?.command).toBe('git status --porcelain=v1 -b -uall')
+    expect(p?.command).toBe('git status --porcelain=v1 -b')
   })
 
   test('user flags are preserved and compact flags appended', () => {
@@ -153,5 +153,19 @@ describe('planRewrite: safety', () => {
     expect(planRewrite('git diff -- big.txt # tk:raw')).toBeNull()
     expect(planRewrite('git status # tk:raw')).toBeNull()
     expect(planRewrite('grep -r TODO src/ # tk:raw')).toBeNull()
+  })
+})
+
+describe('flags go before the pathspec separator', () => {
+  // `git status -- src --porcelain=v1 -b` treats `--porcelain=v1` as a path,
+  // so the flag is ignored and the rewrite silently produces human output.
+  test('git status keeps --porcelain before --', () => {
+    expect(planRewrite('git status -- src/')?.command).toBe('git status --porcelain=v1 -b -- src/')
+    expect(planRewrite('git status -- "a b.txt"')?.command).toBe("git status --porcelain=v1 -b -- 'a b.txt'")
+  })
+
+  test('git diff keeps --no-color before --', () => {
+    expect(planRewrite('git diff -- plain.txt')?.command).toBe('git diff --no-color -- plain.txt')
+    expect(planRewrite('git diff --cached -- src/')?.command).toBe('git diff --cached --no-color -- src/')
   })
 })

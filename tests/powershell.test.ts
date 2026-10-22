@@ -100,6 +100,29 @@ test('ANSI color codes are stripped before parsing', () => {
   expect(out).not.toContain('\x1b[')
 })
 
+// pwsh wraps a name that does not fit its console width onto the next line,
+// and the continuation has no columns of its own. At the default 80 columns
+// that is the common case, not the edge case.
+const WRAPPED_TABLE = [
+  '    Directory: /opt/data/workspace',
+  '',
+  'UnixMode  User Group     LastWriteTime         Size Name',
+  '--------  ---- ----     -------------         ---- ----',
+  'drwxr-sr-x     hermes hermes     10/22/2026 05:32         4096 claude-token-kil',
+  '                                                               ler',
+  '-rw-r--r--     hermes hermes     10/22/2026 05:32         2841 a-rather-long-file-',
+  '                                                               name.md',
+  '',
+].join('\n')
+
+test('names wrapped by the console width are glued back together', () => {
+  const out = compressPsDir(WRAPPED_TABLE, 200)
+  expect(out).toContain('claude-token-killer/')
+  expect(out).toContain('a-rather-long-file-name.md (2.8K)')
+  expect(out).not.toContain('kil\n')
+  expect(out.length).toBeLessThan(WRAPPED_TABLE.length)
+})
+
 test('unrecognized output is returned unchanged', () => {
   const raw = 'Get-ChildItem : Cannot find path /nope\nAt line:1 char:1'
   expect(compressPsDir(raw, 200)).toBe(raw)
@@ -117,11 +140,11 @@ test('entry cap elides with the tk:raw recovery hint', () => {
     (_, i) => `-rw-r--r--     hermes hermes     10/21/2026 23:09            ${i} f${i}.txt`,
   )
   const raw = ['    Directory: /x', 'UnixMode User Group LastWriteTime Size Name', '---- ---- ---- ---- ---- ----', ...rows].join('\n')
-  const out = compressPsDir(raw, 2)
+  const out = compressPsDir(raw, 2, 'Get-ChildItem /x')
   expect(out).toContain('f0.txt')
   expect(out).toContain('f1.txt')
   expect(out).not.toContain('f4.txt')
-  expect(out).toContain('+3 more (raw: re-run with # tk:raw)')
+  expect(out).toContain('+3 more - raw: Get-ChildItem /x # tk:raw')
 })
 
 // ------------------------------------------------------------- e2e hook

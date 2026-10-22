@@ -92,11 +92,11 @@ function planAny(command: string): Plan | null {
 // The `command` is handed to compressors that quote a re-run hint (`# tk:raw`)
 // so the elision line names the command the model actually ran.
 const COMPRESSORS: Record<string, (text: string, caps: Caps, command: string) => string> = {
-  'git-status': (t, c) => compressGitStatus(t, c),
-  'git-diff': (t, c) => compressGitDiff(t, c),
+  'git-status': (t, c, cmd) => compressGitStatus(t, c, cmd),
+  'git-diff': (t, c, cmd) => compressGitDiff(t, c, cmd),
   'git-show': (t) => compressGitShow(t),
   'git-log': (t, _c, cmd) => compressGitLog(t, { maxEntries: 50, rerun: cmd }),
-  grep: (t, c) => compressGrep(t, c),
+  grep: (t, c, cmd) => compressGrep(t, c, cmd),
   ls: (t, c, cmd) => compressLs(t, { maxEntries: c.maxDirEntries }, cmd),
   find: (t, c, cmd) => compressFind(t, { maxEntries: c.maxDirEntries }, cmd),
   'docker-ps': (t, _c, cmd) => compressTable(t, undefined, cmd),
@@ -104,17 +104,19 @@ const COMPRESSORS: Record<string, (text: string, caps: Caps, command: string) =>
   'kubectl-logs': (t, _c, cmd) => compressKubectlLogs(t, undefined, cmd),
   'flux-get': (t, _c, cmd) => compressFluxGet(t, undefined, cmd),
   'gh-run-view': (t, _c, cmd) => compressGhRunView(t, undefined, cmd),
-  'gh-pr-checks': (t, _c) => compressGhPrChecks(t),
-  'gh-pr-view': (t, _c) => compressGhPrView(t),
+  'gh-pr-checks': (t, _c, cmd) => compressGhPrChecks(t, {}, cmd),
+  'gh-pr-view': (t, _c, cmd) => compressGhPrView(t, {}, cmd),
   rows: (t, _c, cmd) => compressRows(t, undefined, cmd),
   pytest: (t, _c, cmd) => compressPytest(t, undefined, cmd),
   vitest: (t, _c, cmd) => compressVitest(t, undefined, cmd),
   playwright: (t, _c, cmd) => compressPlaywright(t, undefined, cmd),
   'npm-install': (t, _c, cmd) => compressNpmInstall(t, undefined, cmd),
-  'cargo-test': (t) => compressCargoTest(t),
-  'go-test': (t) => compressGoTest(t),
+  // Both take the executed command so the elision hint re-runs the same
+  // package selection instead of a generic `go test -v`.
+  'cargo-test': (t, _c, cmd) => compressCargoTest(t, undefined, cmd),
+  'go-test': (t, _c, cmd) => compressGoTest(t, undefined, cmd),
   'go-build': (t, _c, cmd) => compressGoBuild(t, undefined, cmd),
-  gh: (t) => compressGh(t),
+  gh: (t, _c, cmd) => compressGh(t, {}, cmd),
 }
 
 export const register: Register = (on, options) => {
@@ -225,7 +227,7 @@ export const register: Register = (on, options) => {
       typeof res === 'string' ? res : res && typeof res.stdout === 'string' ? res.stdout : null
     if (original === null || original === '') return r
 
-    const compressed = compressPsDir(original, caps.maxDirEntries)
+    const compressed = compressPsDir(original, caps.maxDirEntries, plan.command)
     if (compressed === original || compressed.length >= original.length) return r
 
     const saved = original.length - compressed.length

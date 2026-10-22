@@ -62,7 +62,7 @@ const JOB_URL = /\/job\/(\d+)/
  * Rows that are not tab-separated (gh's TTY table, a "no checks" notice) are
  * kept verbatim, so an unrecognised shape costs nothing.
  */
-export function compressGhPrChecks(text: string, caps: { maxItems?: number } = {}): string {
+export function compressGhPrChecks(text: string, caps: { maxItems?: number } = {}, command = 'gh pr checks'): string {
   const maxItems = caps.maxItems ?? 50
   const clean = stripAnsi(text).replace(/\r\n/g, '\n')
   const lines = clean.split('\n').filter((l) => l.trim() !== '')
@@ -94,7 +94,7 @@ export function compressGhPrChecks(text: string, caps: { maxItems?: number } = {
 
   const kept = out.slice(0, maxItems)
   if (out.length > maxItems) {
-    kept.push(`... +${out.length - maxItems} checks elided - raw: gh pr checks -v # tk:raw`)
+    kept.push(`... +${out.length - maxItems} checks elided - raw: ${command} # tk:raw`)
   }
   const result = kept.join('\n')
   return result.length < text.length ? result : text
@@ -106,7 +106,7 @@ export function compressGhPrChecks(text: string, caps: { maxItems?: number } = {
  * The metadata block and the first `maxBody` body lines survive verbatim; the
  * elision line names the re-run tagged `# tk:raw`.
  */
-export function compressGhPrView(text: string, caps: { maxBody?: number } = {}): string {
+export function compressGhPrView(text: string, caps: { maxBody?: number } = {}, command = 'gh pr view'): string {
   const maxBody = caps.maxBody ?? 25
   const clean = stripAnsi(text).replace(/\r\n/g, '\n')
   const lines = clean.split('\n')
@@ -135,7 +135,7 @@ export function compressGhPrView(text: string, caps: { maxBody?: number } = {}):
   const head = collapsed.slice(0, sep + 1)
   const body = collapsed.slice(sep + 1).filter((l, i, a) => !(l.trim() === '' && i === a.length - 1))
   const out = body.length > maxBody
-    ? [...head, ...body.slice(0, maxBody), `... +${body.length - maxBody} body lines elided - raw: gh pr view --comments # tk:raw`]
+    ? [...head, ...body.slice(0, maxBody), `... +${body.length - maxBody} body lines elided - raw: ${command} # tk:raw`]
     : [...head, ...body]
 
   const result = out.join('\n')

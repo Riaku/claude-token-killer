@@ -159,9 +159,14 @@ export function planGitShow(command: string): ShowPlan | null {
   }
 
   const hasNoColor = rest.some((t) => t === '--no-color' || t === '--color=never')
-  const rewritten = ['git', ...global, 'show', ...rest, ...(hasNoColor ? [] : ['--no-color'])]
-    .map(sq)
-    .join(' ')
+  const extra = hasNoColor ? [] : ['--no-color']
+  // `--no-color` after a bare `--` is a pathspec, not an option.
+  const sep = rest.indexOf('--')
+  const argv =
+    sep === -1
+      ? ['git', ...global, 'show', ...rest, ...extra]
+      : ['git', ...global, 'show', ...rest.slice(0, sep), ...extra, ...rest.slice(sep)]
+  const rewritten = argv.map(sq).join(' ')
   return { kind: 'git-show', command: rewritten }
 }
 

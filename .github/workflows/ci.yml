@@ -5,15 +5,27 @@ on:
     branches: [main]
   pull_request:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  test:
-    runs-on: ubuntu-latest
+  # The mod ships for macOS and Windows as well as Linux. The unit suite runs
+  # on all three: path handling, CRLF, and the platform gate all differ.
+  unit:
+    name: unit (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
 
       - name: Install dev dependencies
         run: npm ci
@@ -21,11 +33,61 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      # Pinned: the mod targets the experimental function-hook API, so an
+      # unpinned CLI turns an upstream release into a red build. Bump this
+      # deliberately, after running the suite against the new version.
       - name: Install Claude Code
-        run: npm install -g @anthropic-ai/claude-code
+        run: npm install -g @anthropic-ai/claude-code@2.1.306
+
+      - name: Show Claude Code version
+        run: claude --version
 
       - name: Validate plugin
-        run: claude plugin validate .
+        run: npm run validate
 
       - name: Run mod tests
-        run: claude plugin test .
+        run: npm run test
+
+      # Real pwsh on Windows: the compressed table, CRLF output, and the
+      # `OS=Windows_NT` signal the platform gate depends on.
+      - name: PowerShell checks against the real shell
+        if: runner.os == 'Windows'
+        run: npm run test:live:windows
+
+  # The fixtures in tests/ replay recorded output. This job runs the real
+  # binaries - pytest, go, cargo, git, coreutils - and pipes their live output
+  # through the same planner and compressor the hook uses, so a new release of
+  # any of them shows up as a failure instead of as silent token loss.
+  live-tools:
+    name: live tool output
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - name: Toolchain versions
+        run: |
+          node --version
+          python3 --version
+          pip install --quiet pytest && pytest --version
+          go version
+          cargo --version || rustup toolchain install stable --profile minimal
+          git --version
+
+      - name: Install dev dependencies
+        run: npm ci
+
+      - name: Real tool output through the compressors
+        run: npm run test:live

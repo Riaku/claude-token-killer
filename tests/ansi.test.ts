@@ -136,8 +136,10 @@ describe('coloured diffs now compress', () => {
   })
 
   test('a coloured grep result compresses', () => {
-    const out = compressGrep('\x1b[35mhooks/ls.ts\x1b[m:\x1b[32m15\x1b[m:hit one\n')
+    const line = (n: number) => `\x1b[35mhooks/ls.ts\x1b[m:\x1b[32m${n}\x1b[m:hit number ${n} in the listing helper`
+    const out = compressGrep(Array.from({ length: 8 }, (_, i) => line(i + 1)).join('\n'))
     expect(out).toContain('hooks/ls.ts')
+    expect(out).toContain('8 matches in 1 file')
     expect(out).not.toContain('\x1b[35m')
   })
 })

@@ -36,7 +36,7 @@ test('git status is rewritten to porcelain and its output compressed', async ($,
 
   const r = await call($, 'git status')
 
-  expect(seen[0]).toBe('git status --porcelain=v1 -b -uall')
+  expect(seen[0]).toBe('git status --porcelain=v1 -b')
   expect(r.result.stdout).toContain('* main...origin/main [ahead 2]')
   expect(r.result.stdout).toContain(' M a.txt')
   expect(r.result.stdout).not.toContain('## ')
@@ -194,7 +194,7 @@ test('non-Windows is treated as Linux: a Darwin host gets trimmed too, with no s
   await boot($)
 
   const r = await call($, 'git status')
-  expect(seen[0]).toBe('git status --porcelain=v1 -b -uall')
+  expect(seen[0]).toBe('git status --porcelain=v1 -b')
   expect(r.result.stdout).toContain('* main')
   expect(spawns).toBe(0)
 })
@@ -390,7 +390,7 @@ test('a rewritten command keeps 2>&1 after the flags it adds', async ($, on) => 
   await boot($)
 
   await call($, 'git status 2>&1')
-  expect(seen[0]).toBe('git status --porcelain=v1 -b -uall 2>&1')
+  expect(seen[0]).toBe('git status --porcelain=v1 -b 2>&1')
 })
 
 test('a mid-pipeline 2>&1 still passes straight through', async ($, on) => {
@@ -504,4 +504,38 @@ test('the new families pass through untouched when a planner bails', async ($, o
     expect(seen[0]).toBe(cmd)
     expect(r.result.stdout).toBe('x\n')
   }
+})
+
+// The elision hint has to quote the command that ran: `go test -v` would run
+// every package in the module, not the one the model picked. Wiring bug class:
+// the compressor is registered without forwarding `plan.command`.
+test('go test elision hint names the executed command', async ($, on) => {
+  const seen: string[] = []
+  const body = ['ok  \texample.com/m\t0.10s']
+  for (let i = 0; i < 25; i += 1) {
+    body.push(`=== RUN   TestF${i}`, `--- FAIL: TestF${i} (0.00s)`, '    x_test.go:9: boom')
+  }
+  fakeBash(on, body.join('\n'), seen)
+  await boot($)
+
+  const r = await call($, 'go test ./pkg/... -count=1')
+
+  expect(seen[0]).toBe('go test ./pkg/... -count=1')
+  expect(r.result.stdout).toContain('raw: go test ./pkg/... -count=1 # tk:raw')
+  expect(r.result.stdout).not.toContain('raw: go test -v # tk:raw')
+})
+
+test('cargo test elision hint names the executed command', async ($, on) => {
+  const seen: string[] = []
+  const body = ['test result: FAILED. 0 passed; 12 failed']
+  for (let i = 0; i < 12; i += 1) {
+    body.push(`---- t${i} stdout ----`, 'thread panicked at src/lib.rs:9', `test t${i} ... FAILED`)
+  }
+  fakeBash(on, body.join('\n'), seen)
+  await boot($)
+
+  const r = await call($, 'cargo test --lib')
+
+  expect(seen[0]).toBe('cargo test --lib')
+  expect(r.result.stdout).toContain('raw: cargo test --lib # tk:raw')
 })

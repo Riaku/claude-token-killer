@@ -59,10 +59,12 @@ const MODE = /^[dlarwxLAHs@-]{4,10}$/
  * Returns the input unchanged when the text is not a recognizable table,
  * letting the caller's never-inflate comparison discard the attempt.
  */
-export function compressPsDir(raw: string, maxEntries: number): string {
+type PsRow = { name: string; dir: boolean; size: number | null }
+
+export function compressPsDir(raw: string, maxEntries: number, command: string = ''): string {
   const clean = stripAnsi(raw)
-  const sections: Array<{ dir: string | null; rows: string[] }> = []
-  let cur: { dir: string | null; rows: string[] } = { dir: null, rows: [] }
+  const sections: Array<{ dir: string | null; rows: PsRow[] }> = []
+  let cur: { dir: string | null; rows: PsRow[] } = { dir: null, rows: [] }
   let sawTable = false
 
   for (const line of clean.split('\n')) {
@@ -83,7 +85,17 @@ export function compressPsDir(raw: string, maxEntries: number): string {
     if (/^[-\s]+$/.test(t)) continue
 
     const parts = t.split(/\s+/)
+    const last = cur.rows[cur.rows.length - 1]
     if (parts.length < 2 || !MODE.test(parts[0])) {
+      // pwsh wraps a name that does not fit its console width onto the next
+      // physical line, and that continuation carries none of the columns. Glue
+      // it back on rather than bailing - at the default 80 columns a listing of
+      // real project names wraps constantly, which is why this path used to
+      // compress nothing at all on this host.
+      if (last !== undefined && parts.length === 1) {
+        last.name += parts[0]
+        continue
+      }
       // Not a table row: bail whole, never half-compress something unknown.
       return raw
     }
@@ -92,9 +104,11 @@ export function compressPsDir(raw: string, maxEntries: number): string {
     const name = parts[parts.length - 1]
     if (name === '.' || name === '..') continue
     const before = parts[parts.length - 2]
-    if (parts[0][0] === 'd') cur.rows.push(`${name}/`)
-    else if (/^\d+$/.test(before)) cur.rows.push(`${name} (${formatSize(Number(before))})`)
-    else cur.rows.push(name)
+    cur.rows.push({
+      name,
+      dir: parts[0][0] === 'd',
+      size: /^\d+$/.test(before) ? Number(before) : null,
+    })
   }
   if (cur.rows.length > 0 || cur.dir !== null) sections.push(cur)
 
@@ -107,13 +121,13 @@ export function compressPsDir(raw: string, maxEntries: number): string {
       out.push(`${header} (empty)`)
       continue
     }
+    const render = (r: PsRow) =>
+      r.dir ? `${r.name}/` : r.size === null ? r.name : `${r.name} (${formatSize(r.size)})`
+    const shown = s.rows.slice(0, maxEntries).map((r) => `  ${render(r)}`)
+    out.push(header, ...shown)
     if (s.rows.length > maxEntries) {
-      out.push(header)
-      out.push(...s.rows.slice(0, maxEntries).map((r) => `  ${r}`))
-      out.push(`  ... +${s.rows.length - maxEntries} more (raw: re-run with # tk:raw)`)
-    } else {
-      out.push(header)
-      out.push(...s.rows.map((r) => `  ${r}`))
+      const hint = command ? ` - raw: ${command} # tk:raw` : ' - raw: re-run with # tk:raw'
+      out.push(`  ... +${s.rows.length - maxEntries} more${hint}`)
     }
   }
   return out.join('\n')

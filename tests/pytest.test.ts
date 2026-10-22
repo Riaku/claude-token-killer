@@ -269,3 +269,39 @@ test('unrecognized output is returned unchanged', () => {
   const prose = 'just some random text that is not a test run at all\n'
   expect(compressPytest(prose)).toBe(prose)
 })
+
+// pytest 9 drops the `====` banner on the run's last line: the totals arrive
+// bare, right after the short-summary section. Using them is the difference
+// between the model knowing "2 failed, 43 passed" and knowing only that two
+// tests failed.
+test('bare totals after the short-summary section are still kept', () => {
+  const raw = [
+    '============================= test session starts ==============================',
+    'collected 45 items',
+    '',
+    '=================================== FAILURES ===================================',
+    '_________________________________ test_fail_1 __________________________________',
+    '    def test_fail_1():',
+    '>       assert 1 == 2',
+    'E       assert 1 == 2',
+    '',
+    't/test_demo.py:11: AssertionError',
+    '=========================== short test summary info ============================',
+    'FAILED t/test_demo.py::test_fail_1 - assert 1 == 2',
+    '2 failed, 43 passed in 0.02s',
+  ].join('\n')
+  const out = compressPytest(raw, undefined, 'pytest')
+  expect(out).toContain('43 passed')
+  expect(out).toContain('2 failed')
+  expect(out).toContain('FAILED t/test_demo.py::test_fail_1')
+  expect(out.length).toBeLessThan(raw.length)
+})
+
+// Listing modes put the payload in the body: the test IDs, the fixtures, the
+// markers. A summary of those runs keeps the one line that does not answer the
+// question.
+test('listing modes are left alone', () => {
+  for (const cmd of ['pytest --co', 'pytest --collect-only -q', 'pytest --fixtures', 'pytest --markers', 'pytest --setup-plan', 'pytest --setup-show']) {
+    expect(planPytest(cmd)).toBeNull()
+  }
+})

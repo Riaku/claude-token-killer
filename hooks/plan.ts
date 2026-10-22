@@ -137,18 +137,29 @@ function planGit(tokens: string[]): Plan | null {
 
   const sub = tokens[i]
   const rest = tokens.slice(i + 1)
-  const rebuild = (extra: string[]): string =>
-    ['git', ...global, sub, ...rest, ...extra].map(sq).join(' ')
+  const rebuild = (extra: string[]): string => {
+    // Anything after a bare `--` is a pathspec, so `git status -- src
+    // --porcelain=v1 -b` asks git about a file literally named `--porcelain=v1`
+    // and the rewrite has no effect. Keep the added flags before the separator.
+    const sep = rest.indexOf('--')
+    const argv =
+      sep === -1
+        ? ['git', ...global, sub, ...rest, ...extra]
+        : ['git', ...global, sub, ...rest.slice(0, sep), ...extra, ...rest.slice(sep)]
+    return argv.map(sq).join(' ')
+  }
 
   if (sub === 'status') {
     if (rest.some((t) => t === '-z' || t === '--json' || t.startsWith('--porcelain=2'))) return null
     // Already porcelain/short output: compress only, no rewrite.
     const alreadyCompact = rest.some((t) => t.startsWith('--porcelain') || t === '-s' || t === '--short' || (/^-[a-zA-Z]+$/.test(t) && t.includes('s')))
     if (alreadyCompact) return { kind: 'git-status', command: rebuild([]) }
-    const add = ['--porcelain=v1', '-b']
-    const hasUntrackedFlag = rest.some((t) => t.startsWith('-u') || t.startsWith('--untracked-files'))
-    if (!hasUntrackedFlag) add.push('-uall')
-    return { kind: 'git-status', command: rebuild(add) }
+    // No -uall. Git already collapses an untracked directory into one entry,
+    // and expanding it turns twenty generated files into twenty lines - on a
+    // tree with a fresh build directory that made the rewrite *bigger* than
+    // plain `git status` (measured: 1133 B vs 629 B). A user who wants the
+    // per-file list can still pass -u.
+    return { kind: 'git-status', command: rebuild(['--porcelain=v1', '-b']) }
   }
 
   if (sub === 'diff') {

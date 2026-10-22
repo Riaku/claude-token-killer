@@ -42,11 +42,11 @@ export const DEFAULT_CAPS: Caps = {
  * returning nothing (an agent reading empty stdout cannot tell "clean" from
  * "the command produced nothing").
  */
-export function compressGitStatus(porcelain: string, caps: Caps = DEFAULT_CAPS): string {
-  return stripRetry(porcelain, (text) => compressGitStatusInner(text, caps))
+export function compressGitStatus(porcelain: string, caps: Caps = DEFAULT_CAPS, command?: string): string {
+  return stripRetry(porcelain, (text) => compressGitStatusInner(text, caps, command))
 }
 
-function compressGitStatusInner(porcelain: string, caps: Caps = DEFAULT_CAPS): string {
+function compressGitStatusInner(porcelain: string, caps: Caps = DEFAULT_CAPS, command?: string): string {
   const lines = porcelain.split('\n').filter((l) => l.trim() !== '')
   if (lines.length === 0) return 'clean - nothing to commit'
 
@@ -69,7 +69,7 @@ function compressGitStatusInner(porcelain: string, caps: Caps = DEFAULT_CAPS): s
   }
 
   if (untrackedTotal > untrackedShown) {
-    out.push(`... +${untrackedTotal - untrackedShown} more untracked (raw: re-run with # tk:raw)`)
+    out.push(`... +${untrackedTotal - untrackedShown} more untracked (raw: ${command ? `${command} # tk:raw` : 're-run with # tk:raw'})`)
   }
   return out.join('\n')
 }
@@ -165,11 +165,11 @@ function collapseContext(body: string[], ctx: number): string[] {
  * Returns the input unchanged when it does not look like a unified diff at all
  * (so a caller's length check passes it through).
  */
-export function compressGitDiff(text: string, caps: Caps = DEFAULT_CAPS): string {
-  return stripRetry(text, (t) => compressGitDiffInner(t, caps))
+export function compressGitDiff(text: string, caps: Caps = DEFAULT_CAPS, command?: string): string {
+  return stripRetry(text, (t) => compressGitDiffInner(t, caps, command))
 }
 
-function compressGitDiffInner(text: string, caps: Caps = DEFAULT_CAPS): string {
+function compressGitDiffInner(text: string, caps: Caps = DEFAULT_CAPS, command?: string): string {
   if (!text.includes('diff --git ')) return text
   const files = splitDiffBlocks(text)
   if (files.length === 0) return text
@@ -214,7 +214,7 @@ function compressGitDiffInner(text: string, caps: Caps = DEFAULT_CAPS): string {
 
   if (elidedFiles > 0) {
     out.push('')
-    out.push(`... +${elidedFiles} more file${elidedFiles === 1 ? '' : 's'} elided (+${elidedAdded} -${elidedRemoved}) - raw: git diff # tk:raw`)
+    out.push(`... +${elidedFiles} more file${elidedFiles === 1 ? '' : 's'} elided (+${elidedAdded} -${elidedRemoved}) - raw: ${command ?? 'git diff'} # tk:raw`)
   }
   return out.join('\n')
 }
@@ -230,11 +230,11 @@ function compressGitDiffInner(text: string, caps: Caps = DEFAULT_CAPS): string {
  * "Binary file X matches") are kept verbatim at the end. If nothing matches the
  * shape, the input is returned unchanged.
  */
-export function compressGrep(text: string, caps: Caps = DEFAULT_CAPS): string {
-  return stripRetry(text, (t) => compressGrepInner(t, caps))
+export function compressGrep(text: string, caps: Caps = DEFAULT_CAPS, command?: string): string {
+  return stripRetry(text, (t) => compressGrepInner(t, caps, command))
 }
 
-function compressGrepInner(text: string, caps: Caps = DEFAULT_CAPS): string {
+function compressGrepInner(text: string, caps: Caps = DEFAULT_CAPS, command?: string): string {
   const byFile = new Map<string, string[]>()
   const notes: string[] = []
   let total = 0
@@ -255,6 +255,7 @@ function compressGrepInner(text: string, caps: Caps = DEFAULT_CAPS): string {
 
   const truncate = (s: string): string => (s.length > caps.maxLineLen ? s.slice(0, caps.maxLineLen) + '...' : s)
 
+  const hint = command ? `${command} # tk:raw` : 're-run with # tk:raw'
   const out: string[] = [`${total} match${total === 1 ? '' : 'es'} in ${byFile.size} file${byFile.size === 1 ? '' : 's'}`]
   let budget = caps.maxGrepTotal
 
@@ -264,13 +265,16 @@ function compressGrepInner(text: string, caps: Caps = DEFAULT_CAPS): string {
     out.push('')
     out.push(`${file} (${matches.length}):`)
     for (const m of shown) out.push(truncate(m))
-    if (matches.length > shown.length) out.push(`... +${matches.length - shown.length} more in ${file} (raw: re-run with # tk:raw)`)
+    if (matches.length > shown.length) out.push(`... +${matches.length - shown.length} more in ${file} (raw: ${hint})`)
     budget -= shown.length
   }
 
   const shownTotal = caps.maxGrepTotal - Math.max(budget, 0)
-  if (total > shownTotal) out.push(`... +${total - shownTotal} matches elided (raw: re-run with # tk:raw)`)
+  if (total > shownTotal) out.push(`... +${total - shownTotal} matches elided (raw: ${hint})`)
 
   if (notes.length > 0) out.push('', ...notes)
-  return out.join('\n')
+  // Two matches in one file cost more as a grouped listing than as raw grep
+  // output, so keep whichever is shorter.
+  const joined = out.join('\n')
+  return joined.length < text.length ? joined : text
 }
