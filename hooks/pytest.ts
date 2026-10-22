@@ -120,8 +120,8 @@ function renderCounts(title: string): string | null {
 
 type Block = { header: string; body: string[] }
 
-function elision(hidden: number, what: string, rerun: string): string {
-  return `... +${hidden} ${what}${hidden === 1 ? '' : 's'} elided - raw: ${rerun} # tk:raw`
+function elision(hidden: number, what: string, command: string): string {
+  return `... +${hidden} ${what}${hidden === 1 ? '' : 's'} elided - raw: ${command} # tk:raw`
 }
 
 /**
@@ -131,12 +131,12 @@ function elision(hidden: number, what: string, rerun: string): string {
  *
  * Unrecognized text (no session-start banner, no counts, no summary) is
  * returned unchanged so the caller's never-inflate check passes it by.
- * `rerun` only changes the command quoted in elision markers.
+ * `command` only changes the command quoted in elision markers.
  */
 export function compressPytest(
   text: string,
   caps: PytestCaps = DEFAULT_PYTEST_CAPS,
-  rerun: string = PYTEST_RERUN,
+  command: string = PYTEST_RERUN,
 ): string {
   const lines = stripAnsi(text).split(/\r\n|\r|\n/)
 
@@ -244,17 +244,17 @@ export function compressPytest(
     const keep = Math.max(0, caps.maxLinesPerBlock)
     if (block.body.length > keep) {
       out.push(...block.body.slice(0, keep))
-      out.push(elision(block.body.length - keep, 'line', rerun))
+      out.push(elision(block.body.length - keep, 'line', command))
     } else {
       out.push(...block.body)
     }
   }
-  if (blocks.length > shown.length) out.push(elision(blocks.length - shown.length, 'failure block', rerun))
+  if (blocks.length > shown.length) out.push(elision(blocks.length - shown.length, 'failure block', command))
 
   if (warnings.length > 0) {
     const keep = Math.max(0, caps.maxWarningLines)
     out.push(...warnings.slice(0, keep))
-    if (warnings.length > keep) out.push(elision(warnings.length - keep, 'warning line', rerun))
+    if (warnings.length > keep) out.push(elision(warnings.length - keep, 'warning line', command))
   }
   if (summary.length > 0) out.push(...summary)
   if (counts) out.push(counts)

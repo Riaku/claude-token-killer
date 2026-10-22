@@ -121,7 +121,7 @@ const PROTECTED =
 export function compressKubectlLogs(
   text: string,
   caps: KubectlLogsCaps = DEFAULT_KUBECTL_LOGS_CAPS,
-  rerun: string = 'kubectl logs',
+  command: string = 'kubectl logs',
 ): string {
   const stripped = stripAnsi(text)
   const rawLines = stripped.split(/\r\n|\r|\n/)
@@ -166,8 +166,8 @@ export function compressKubectlLogs(
 
   const marker =
     protectedRuns.length > 0
-      ? `... +${hiddenLines} lines elided, ${protectedRuns.length} error/warn kept below - raw: ${rerun} # tk:raw`
-      : `... +${hiddenLines} lines elided - raw: ${rerun} # tk:raw`
+      ? `... +${hiddenLines} lines elided, ${protectedRuns.length} error/warn kept below - raw: ${command} # tk:raw`
+      : `... +${hiddenLines} lines elided - raw: ${command} # tk:raw`
 
   const out = [...head.map(render), marker, ...protectedRuns.map(render), ...tail.map(render)].join('\n')
   return out.length >= text.length ? text : out

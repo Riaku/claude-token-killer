@@ -55,12 +55,14 @@ const MODE = /^[dlarwxLAHs@-]{4,10}$/
  * Returns the input unchanged when the text is not a recognizable table,
  * letting the caller's never-inflate comparison discard the attempt.
  */
+import { DEFAULT_CAPS } from './compress.ts'
+
 type PsRow = { name: string; dir: boolean; size: number | null }
 
 /** Directory listing: entries listed per section before an elision line. */
 export type PsDirCaps = { maxEntries: number }
 
-export const DEFAULT_PS_DIR_CAPS: PsDirCaps = { maxEntries: 200 }
+export const DEFAULT_PS_DIR_CAPS: PsDirCaps = { maxEntries: DEFAULT_CAPS.maxDirEntries }
 
 export function compressPsDir(raw: string, caps: PsDirCaps = DEFAULT_PS_DIR_CAPS, command = ''): string {
   const clean = stripAnsi(raw)

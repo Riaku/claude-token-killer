@@ -174,6 +174,15 @@ describe('compressGitDiff', () => {
     expect(out).toContain('lines elided - raw: git diff -- big.txt # tk:raw')
   })
 
+  test('a per-file elision names the command that ran, not a fixed git diff', () => {
+    const hunk = Array.from({ length: 200 }, (_, i) => (i % 20 === 0 ? `+changed${i}` : ` context${i}`)).join('\n')
+    const big = `diff --git a/big.txt b/big.txt\n@@ -1,200 +1,200 @@\n${hunk}\n`
+    // A `git show` body elided with a `git diff -- path` hint sends the reader to
+    // the working tree, not the commit, so the hint has to carry the real command.
+    const out = compressGitDiff(big, { ...DEFAULT_CAPS, maxDiffLinesPerFile: 10 }, 'git show abc1234 --no-color')
+    expect(out).toContain('lines elided - raw: git show abc1234 --no-color -- big.txt # tk:raw')
+  })
+
   test('total cap summarizes the remaining files', () => {
     const one = (n: number): string =>
       `diff --git a/f${n}.txt b/f${n}.txt\n@@ -1 +1 @@\n-old${n}\n+new${n}\n`

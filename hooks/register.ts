@@ -126,10 +126,10 @@ function planAny(command: string): Plan | null {
 }
 
 // Every compressor is `(text, caps, command)`: the second argument is the
-// family's own caps object (never a bare number, never a re-run string buried in
-// it), and the third is the command that ran, so an elision line can name the
-// command to re-run tagged `# tk:raw`. `go-build` is the one exception: it
-// elides nothing, so it takes text alone.
+// family's own caps object, or `undefined` for the family defaults - never a
+// bare number, never a re-run string buried in it - and the third is the command
+// that ran, so an elision line can name the command to re-run tagged `# tk:raw`.
+// `go-build` is the one exception: it elides nothing, so it takes text alone.
 const COMPRESSORS: Record<string, (text: string, caps: Caps, command: string) => string> = {
   'git-status': (t, c, cmd) => compressGitStatus(t, c, cmd),
   'git-diff': (t, c, cmd) => compressGitDiff(t, c, cmd),

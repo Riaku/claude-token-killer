@@ -84,7 +84,7 @@ const NOISE =
 export function compressPlaywright(
   text: string,
   caps: PlaywrightCaps = DEFAULT_PLAYWRIGHT_CAPS,
-  rerun: string = 'npx playwright test',
+  command: string = 'npx playwright test',
 ): string {
   const lines = stripAnsi(text).split(/\r\n|\r|\n/)
   const out: string[] = []
@@ -98,7 +98,7 @@ export function compressPlaywright(
 
   const closeFailure = (): void => {
     if (droppedFailureLines > 0) {
-      out.push(`... +${droppedFailureLines} lines of this failure elided - raw: ${rerun} # tk:raw`)
+      out.push(`... +${droppedFailureLines} lines of this failure elided - raw: ${command} # tk:raw`)
     }
     inFailure = false
     failureLines = 0
@@ -174,7 +174,7 @@ export function compressPlaywright(
   if (!sawShape) return text
 
   if (elidedFailures > 0) {
-    out.push(`... +${elidedFailures} more failures - raw: ${rerun} # tk:raw`)
+    out.push(`... +${elidedFailures} more failures - raw: ${command} # tk:raw`)
   }
   if (summary.length > 0) {
     const shown = summary.slice(0, caps.maxSummaryLines)
