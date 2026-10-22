@@ -5,10 +5,12 @@
 // PowerShell handler (Get-ChildItem) is Windows-only. Everything else is a
 // no-op.
 //
-// Coverage: git status / diff / show / log, recursive grep, ls, find,
-// docker ps, kubectl get (+ -o wide), kubectl logs, flux get, pytest, vitest,
-// playwright test, npm|pnpm install, cargo test, go test, go build|vet, and
-// gh pr|issue|run list.
+// Coverage: git status / diff / show / log, recursive grep (plus rg and
+// git grep), ls, find, docker ps, kubectl get (+ -o wide), kubectl logs,
+// kubectl exec -- ls -l, flux get, pytest, vitest, playwright test,
+// npm|pnpm install, cargo test, go test, go build|vet, gh pr|issue|run list,
+// gh run view --log, gh pr checks/view, and the ps|df|free|kubectl top|
+// docker images listings.
 //
 // A trailing `2>&1` is understood: it is split off the command tail, planned
 // without it, and re-appended verbatim after any added flags.
@@ -25,6 +27,11 @@ import { compressCargoTest, planCargoTest } from './cargotest.ts'
 import { compressFind, planFind } from './find.ts'
 import { compressFluxGet, planFluxGet } from './flux.ts'
 import { compressGh, planGh } from './gh.ts'
+import { compressGhPrChecks, compressGhPrView, planGhPr } from './ghpr.ts'
+import { compressGhRunView, planGhRunView } from './ghrunview.ts'
+import { planGitGrep, planRg } from './grepalias.ts'
+import { planKubectlExec } from './kubectlexec.ts'
+import { compressRows, planRows } from './sysinfo.ts'
 import { compressGitLog, planGitLog } from './gitlog.ts'
 import { compressGitShow, planGitShow } from './gitshow.ts'
 import { compressGoBuild, planGoBuild } from './gobuild.ts'
@@ -50,6 +57,7 @@ const PLANNERS: ReadonlyArray<(command: string) => Plan | null> = [
   planLs,
   planFind,
   planDocker,
+  planKubectlExec,
   planKubectlGet,
   planKubectlLogs,
   planFluxGet,
@@ -61,6 +69,11 @@ const PLANNERS: ReadonlyArray<(command: string) => Plan | null> = [
   planGoTest,
   planGoBuild,
   planGh,
+  planGhRunView,
+  planGhPr,
+  planRg,
+  planGitGrep,
+  planRows,
 ]
 
 function planAny(command: string): Plan | null {
@@ -90,6 +103,10 @@ const COMPRESSORS: Record<string, (text: string, caps: Caps, command: string) =>
   'kubectl-get': (t, _c, cmd) => compressTable(t, undefined, cmd),
   'kubectl-logs': (t, _c, cmd) => compressKubectlLogs(t, undefined, cmd),
   'flux-get': (t, _c, cmd) => compressFluxGet(t, undefined, cmd),
+  'gh-run-view': (t, _c, cmd) => compressGhRunView(t, undefined, cmd),
+  'gh-pr-checks': (t, _c) => compressGhPrChecks(t),
+  'gh-pr-view': (t, _c) => compressGhPrView(t),
+  rows: (t, _c, cmd) => compressRows(t, undefined, cmd),
   pytest: (t, _c, cmd) => compressPytest(t, undefined, cmd),
   vitest: (t, _c, cmd) => compressVitest(t, undefined, cmd),
   playwright: (t, _c, cmd) => compressPlaywright(t, undefined, cmd),

@@ -2,11 +2,13 @@
 
 A Claude Code mod that kills wasted tokens at the source: it intercepts the
 commands an agent runs most — `git status`, `git diff`, `git show`, `git log`,
-recursive `grep`, `ls`, `find`, `docker ps`, `kubectl get`, `kubectl logs`,
-`flux get`, `pytest`, `vitest`, `playwright test`, `npm install`, `cargo test`,
-`go test`, `go build`, `go vet`, `gh … list` — rewrites them into compact forms
-on the fly where that is provably safe, and compresses their output before the
-model ever sees it.
+recursive `grep` (plus `rg` and `git grep`), `ls` (local, or inside a pod via
+`kubectl exec -- ls`), `find`, `docker ps`, `kubectl get`, `kubectl logs`,
+`flux get`, `gh … list`, `gh run view --log`, `gh pr checks`, `gh pr view`,
+`pytest`, `vitest`, `playwright test`, `npm install`, `cargo test`, `go test`,
+`go build`, `go vet`, `ps`, `df`, `free`, `kubectl top`, `docker images` —
+rewrites them into compact forms on the fly where that is provably safe, and
+compresses their output before the model ever sees it.
 
 This is the Claude-native take on
 [rtk (Rust Token Killer)](https://github.com/rtk-ai/rtk) and
@@ -15,6 +17,13 @@ out to an external binary, the rewrite happens **inside** Claude Code as a
 function-hook mod. No binary to install, no PATH to poison, no wrapper to
 trust — one plugin, pure TypeScript, zero process spawns.
 
+> **Ceiling worth knowing.** Claude Code caps what a `tool.call` hook receives
+> for very large results: measured here, a 22.4 KB `kubectl logs` compressed
+> end-to-end to 10.1 KB, while a 63.9 KB `gh run view --log` was compressed only
+> in its first ~226 of 592 lines before the harness switched to persisted output
+> plus a 2 KB preview. Below roughly 22 KB the mod sees everything; above it,
+> the harness decides what the model reads.
+>
 > **Scope.** Bash handlers everywhere except Windows (non-Windows is treated
 > as Linux); the `Get-ChildItem` handler is Windows-only. Everything runs
 > in-process. Caps and formats are opinionated; tune them via plugin
@@ -40,6 +49,12 @@ trust — one plugin, pure TypeScript, zero process spawns.
 | `kubectl get … -o wide` | none | same table compaction — `wide` is a padded table, not a machine format; `json`/`yaml`/`name`/`jsonpath`/`custom-columns` still bail |
 | `kubectl logs <target>` | none | ANSI stripped, runs of identical lines collapsed to `line  xN`, head + tail kept under a cap with every `error`/`warn`/`panic` line rescued from the elided middle; `-f`/`--follow` bail |
 | `flux get <kind>` | none | the tab-separated table compacts like any other (flux uses a tabwriter, so this needs the tab path) |
+| `kubectl exec <pod> -- ls -l …` | none | the inner command is routed to the `ls` compactor; anything other than a long-format `ls` (and `-R`, `-it`) bails |
+| `gh run view --log`, `--log-failed` | none | one block per job/step, timestamps and runner section markers dropped, repeats collapsed to `line  xN`, per-step cap with every error/warn line rescued |
+| `gh pr checks` | none | the job URL collapses to `job:<id>` — what `gh run view --job` wants — and rows are capped; `--watch` bails |
+| `gh pr view` | none | metadata block kept verbatim, body capped with an elision hint, blank-line runs collapsed |
+| `rg -n`, `git grep -n` | none | the same grouping as recursive grep; needs line numbers, and count/list/context/output modes bail |
+| `ps`, `df`, `free`, `kubectl top`, `docker images` | none | column padding squeezed with the trailing field kept verbatim (so a `ps` COMMAND containing spaces survives), rows capped with error rows rescued |
 | `playwright test` (also via `npx`/`pnpm exec`/`yarn`/`bunx`) | none | result lines and failure blocks kept, per-worker progress dropped, summary counts folded onto one line; `--reporter`, `--ui`, `--debug`, `--headed` bail |
 | `go build`, `go vet` | none | `go: downloading/finding` chatter dropped, repeated identical diagnostics collapsed; every diagnostic line kept verbatim |
 | `pytest`, `vitest run` | none | failure blocks and summaries kept, progress dots/bars/spinners dropped, counts on one line |
@@ -170,6 +185,11 @@ hooks/
   tables.ts       docker ps / kubectl get: generic column-table compactor (space + tab) + planners
   kubectllogs.ts  kubectl logs: planner (streams/unknown flags bail) + log compaction
   flux.ts         flux get: planner; table body via tables.ts
+  ghrunview.ts    gh run view --log: job/step blocks, timestamps and runner noise dropped
+  ghpr.ts         gh pr checks (URL -> job id) and gh pr view (metadata kept, body capped)
+  grepalias.ts    rg and git grep reuse the grep compressor
+  kubectlexec.ts  kubectl exec -- ls -l reuses the ls compactor
+  sysinfo.ts      ps/df/free/kubectl top/docker images: padding squeeze + row cap
   pytest.ts       pytest output compaction
   vitest.ts       vitest output compaction
   playwright.ts   playwright test output compaction

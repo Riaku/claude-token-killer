@@ -419,3 +419,89 @@ test('kubectl logs is planned, compressed, and never rewritten', async ($, on) =
   expect(r.result.stdout).toContain('ERROR db refused')
   expect(r.result.stdout.length).toBeLessThan(raw.length)
 })
+
+
+test('gh run view --log is compressed without being rewritten', async ($, on) => {
+  const seen: string[] = []
+  const L = (job: string, step: string, msg: string) => `${job}\t${step}\t2026-10-22T04:46:13.6419785Z ${msg}`
+  const raw = [
+    L('test', 'Run tests', '##[group]Run npm test'),
+    L('test', 'Run tests', 'ok 313 tests'),
+    L('test', 'Run tests', 'ok 313 tests'),
+    L('test', 'Run tests', 'Error: one failure'),
+  ].join('\n')
+  fakeBash(on, raw, seen)
+  await boot($)
+
+  const cmd = 'gh run view 123 --log-failed'
+  const r = await call($, cmd)
+  expect(seen[0]).toBe(cmd)
+  expect(r.result.stdout).toContain('test > Run tests (3)')
+  expect(r.result.stdout).toContain('ok 313 tests  x2')
+  expect(r.result.stdout).toContain('Error: one failure')
+  expect(r.result.stdout).not.toContain('2026-10-22T')
+})
+
+test('gh pr checks drops the job URL to an id', async ($, on) => {
+  const seen: string[] = []
+  const raw = 'test\tpass\t18s\thttps://github.com/o/r/actions/runs/1/job/456\t\n'
+  fakeBash(on, raw, seen)
+  await boot($)
+
+  const r = await call($, 'gh pr checks 3')
+  expect(seen[0]).toBe('gh pr checks 3')
+  expect(r.result.stdout).toBe('test  pass  18s  job:456')
+})
+
+test('rg and git grep reuse the grep compressor without being rewritten', async ($, on) => {
+  const seen: string[] = []
+  const raw = Array.from({ length: 12 }, (_, i) => `hooks/ls.ts:${i + 10}:match${i}`).join('\n')
+  fakeBash(on, raw, seen)
+  await boot($)
+
+  for (const cmd of ['rg -n match hooks/', 'git grep -n match -- hooks']) {
+    seen.length = 0
+    const r = await call($, cmd)
+    expect(seen[0]).toBe(cmd)
+    expect(r.result.stdout).toContain('12 matches in 1 file')
+    expect(r.result.stdout.length).toBeLessThan(raw.length)
+  }
+})
+
+test('kubectl exec -- ls -l routes to the ls compactor', async ($, on) => {
+  const seen: string[] = []
+  const rows = Array.from({ length: 30 }, (_, i) => `-rw-r--r--  1 hermes hermes  179${i} Oct 21 22:54 file-${i}.txt`)
+  const raw = ['total 68', ...rows].join('\n')
+  fakeBash(on, raw, seen)
+  await boot($)
+
+  const cmd = 'kubectl exec -n apps pod-1 -c gateway -- ls -la /opt/data/workspace'
+  const r = await call($, cmd)
+  expect(seen[0]).toBe(cmd)
+  expect(r.result.stdout.length).toBeLessThan(raw.length)
+  expect(r.result.stdout).toContain('file-0.txt')
+})
+
+test('ps and df squeeze their column padding and are not rewritten', async ($, on) => {
+  const seen: string[] = []
+  const df = 'Filesystem      Size  Used Avail Use% Mounted on\n/dev/sda1        98G   40G   58G  41% /\n'
+  fakeBash(on, df, seen)
+  await boot($)
+
+  const r = await call($, 'df -h')
+  expect(seen[0]).toBe('df -h')
+  expect(r.result.stdout).toBe('Filesystem Size Used Avail Use% Mounted on\n/dev/sda1 98G 40G 58G 41% /\n')
+})
+
+test('the new families pass through untouched when a planner bails', async ($, on) => {
+  const seen: string[] = []
+  fakeBash(on, 'x\n', seen)
+  await boot($)
+
+  for (const cmd of ['ps -p 1', 'rg -l plan', 'kubectl exec pod -- cat /etc/hosts', 'gh run view 1 --json']) {
+    seen.length = 0
+    const r = await call($, cmd)
+    expect(seen[0]).toBe(cmd)
+    expect(r.result.stdout).toBe('x\n')
+  }
+})
