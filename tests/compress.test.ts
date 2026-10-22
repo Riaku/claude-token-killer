@@ -61,8 +61,24 @@ describe('compressGitStatus', () => {
     const many = Array.from({ length: 250 }, (_, i) => `?? f${i}.txt`).join('\n')
     const out = compressGitStatus(`## main\n${many}\n`, DEFAULT_CAPS)
     expect(out).toContain('f0.txt')
-    expect(out).toContain('... +50 more untracked')
+    expect(out).toContain('... +50 more (50 untracked)')
     expect(out).not.toContain('f249.txt')
+  })
+
+  test('modified files count against the same budget as untracked ones', () => {
+    const many = Array.from({ length: 250 }, (_, i) => ` M f${i}.txt`).join('\n')
+    const out = compressGitStatus(`## main\n${many}\n`, DEFAULT_CAPS)
+    expect(out).toContain(' M f0.txt')
+    expect(out).toContain('... +50 more (50 changed)')
+    expect(out).not.toContain('f249.txt')
+  })
+
+  test('one budget covers both sections, and the count splits them', () => {
+    const changed = Array.from({ length: 250 }, (_, i) => ` M c${i}.txt`).join('\n')
+    const untracked = Array.from({ length: 10 }, (_, i) => `?? u${i}.txt`).join('\n')
+    const out = compressGitStatus(`## main\n${changed}\n${untracked}\n`, DEFAULT_CAPS)
+    expect(out).toContain('... +60 more (50 changed, 10 untracked)')
+    expect(out).not.toContain('u0.txt')
   })
 
   test('staged, renamed and ignored lines pass through', () => {

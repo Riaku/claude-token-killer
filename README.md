@@ -202,7 +202,7 @@ claude plugin configure token-killer
 
 | Option | Default | Meaning |
 | --- | --- | --- |
-| `maxStatusFiles` | 200 | untracked files listed before elision |
+| `maxStatusFiles` | 200 | changed and untracked entries listed before elision |
 | `maxDiffLinesPerFile` | 60 | kept hunk lines per file |
 | `maxDiffTotalLines` | 400 | kept diff lines across all files |
 | `maxGrepPerFile` | 8 | kept matches per file |
@@ -244,13 +244,13 @@ hooks/
   plan.ts         git status/diff + grep: command -> rewrite planner
   ansi.ts         the single escape-sequence definition: strip and retry
   compress.ts     git status/diff + grep: output compressors
-  gitshow.ts      git show: planner + header compaction, diff body via compress.ts
+  gitshow.ts      git show: planner + header compaction, diff body from compress.ts
   gitlog.ts       git log: planner + one-line-per-commit compaction
   ls.ts           ls long format: planner + entry compaction
   find.ts         find: planner (side-effect flags bail) + directory grouping
   tables.ts       docker ps / kubectl get: column-table compactor (space + tab) + planners
   kubectllogs.ts  kubectl logs: planner (streams and unknown flags bail) + compaction
-  flux.ts         flux get: planner; table body via tables.ts
+  flux.ts         flux get: planner; table body from tables.ts
   ghrunview.ts    gh run view --log: job/step blocks, timestamps and runner noise dropped
   ghpr.ts         gh pr checks (URL -> job id) and gh pr view (metadata kept, body capped)
   grepalias.ts    rg and git grep reuse the grep compressor
