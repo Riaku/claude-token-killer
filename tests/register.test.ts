@@ -36,7 +36,7 @@ test('git status is rewritten to porcelain and its output compressed', async ($,
 
   const r = await call($, 'git status')
 
-  expect(seen[0]).toBe('git status --porcelain=v1 -b -uall')
+  expect(seen[0]).toBe('git status --porcelain=v1 -b')
   expect(r.result.stdout).toContain('* main...origin/main [ahead 2]')
   expect(r.result.stdout).toContain(' M a.txt')
   expect(r.result.stdout).not.toContain('## ')
@@ -194,7 +194,7 @@ test('non-Windows is treated as Linux: a Darwin host gets trimmed too, with no s
   await boot($)
 
   const r = await call($, 'git status')
-  expect(seen[0]).toBe('git status --porcelain=v1 -b -uall')
+  expect(seen[0]).toBe('git status --porcelain=v1 -b')
   expect(r.result.stdout).toContain('* main')
   expect(spawns).toBe(0)
 })
@@ -390,7 +390,7 @@ test('a rewritten command keeps 2>&1 after the flags it adds', async ($, on) => 
   await boot($)
 
   await call($, 'git status 2>&1')
-  expect(seen[0]).toBe('git status --porcelain=v1 -b -uall 2>&1')
+  expect(seen[0]).toBe('git status --porcelain=v1 -b 2>&1')
 })
 
 test('a mid-pipeline 2>&1 still passes straight through', async ($, on) => {

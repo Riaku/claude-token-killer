@@ -145,10 +145,12 @@ function planGit(tokens: string[]): Plan | null {
     // Already porcelain/short output: compress only, no rewrite.
     const alreadyCompact = rest.some((t) => t.startsWith('--porcelain') || t === '-s' || t === '--short' || (/^-[a-zA-Z]+$/.test(t) && t.includes('s')))
     if (alreadyCompact) return { kind: 'git-status', command: rebuild([]) }
-    const add = ['--porcelain=v1', '-b']
-    const hasUntrackedFlag = rest.some((t) => t.startsWith('-u') || t.startsWith('--untracked-files'))
-    if (!hasUntrackedFlag) add.push('-uall')
-    return { kind: 'git-status', command: rebuild(add) }
+    // No -uall. Git already collapses an untracked directory into one entry,
+    // and expanding it turns twenty generated files into twenty lines - on a
+    // tree with a fresh build directory that made the rewrite *bigger* than
+    // plain `git status` (measured: 1133 B vs 629 B). A user who wants the
+    // per-file list can still pass -u.
+    return { kind: 'git-status', command: rebuild(['--porcelain=v1', '-b']) }
   }
 
   if (sub === 'diff') {

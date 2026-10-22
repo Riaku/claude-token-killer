@@ -24,7 +24,7 @@ describe('planRewrite: git status', () => {
   test('bare git status rewrites to porcelain with branch', () => {
     const p = planRewrite('git status')
     expect(p?.kind).toBe('git-status')
-    expect(p?.command).toBe('git status --porcelain=v1 -b -uall')
+    expect(p?.command).toBe('git status --porcelain=v1 -b')
   })
 
   test('user flags are preserved and compact flags appended', () => {

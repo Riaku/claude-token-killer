@@ -35,7 +35,7 @@ test('a rewritten command keeps the redirect last', () => {
   const plan = planRewrite(body)
   expect(plan).not.toBeNull()
   const out = withStderrMerge(plan!.command, merged)
-  expect(out).toBe('git status --porcelain=v1 -b -uall 2>&1')
+  expect(out).toBe('git status --porcelain=v1 -b 2>&1')
 })
 
 test('2>&1 anywhere but the tail is not touched', () => {
