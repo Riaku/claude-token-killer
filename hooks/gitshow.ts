@@ -107,7 +107,7 @@ const COMMIT_HEADER = /^commit ([0-9a-f]{7,64})$/
  * Decide the rewrite for `git show`, or null when the command is not one we
  * are willing to touch.
  *
- * Compression-only flags (`--stat`, `--pretty`, ...) bail rather than run
+ * Compression-only flags (`--stat`, `--pretty`, and so on) bail rather than run
  * uncompressed: the rewrite would be pointless and the output would still not
  * match what compressGitShow expects.
  */

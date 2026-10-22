@@ -82,8 +82,7 @@ test('non-log commands are not planned', () => {
 
 // ---------------------------------------------------------- compressor
 
-// Real `git log` from the fixture repo at
-// /opt/data/cache/scratch/tk-git-fixtures (5 commits, 2 with bodies, 1 empty),
+// Real `git log` from a fixture repository (5 commits, 2 with bodies, 1 empty),
 // captured verbatim with GIT_PAGER=cat. Lengths are asserted below so a
 // mis-transcribed fixture fails loudly instead of testing a fiction.
 
@@ -157,8 +156,8 @@ const LOG_PATCH = [
   '+three',
 ].join('\n')
 
-// 607 chars: `git log` from /opt/data/cache/scratch/tk-merge-fixture,
-// so the `Merge:` header line is real output, not a hand-written sample.
+// 607 chars: `git log` across a real merge, so the `Merge:` header line is real
+// output, not a hand-written sample.
 const LOG_MERGE = [
   'commit a0302c1a9c0a6f50bf462b76b1f7049455937e8f',
   'Merge: 37ea0c0 25bdab1',

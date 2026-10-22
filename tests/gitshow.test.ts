@@ -82,9 +82,9 @@ test('non-show commands are not planned', () => {
 
 // ---------------------------------------------------------- compressor
 
-// Real `git show` from /opt/data/cache/scratch/tk-git-fixtures (5 commits,
-// 60-line new file, one empty commit) and /opt/data/cache/scratch/tk-merge-fixture
-// (a real --no-ff merge), captured verbatim with GIT_PAGER=cat.
+// Real `git show`, captured verbatim with GIT_PAGER=cat: a fixture repository
+// with 5 commits, a 60-line new file and one empty commit, plus a real --no-ff
+// merge.
 // The lengths are asserted so a mis-transcribed fixture fails loudly.
 
 // 892 chars: a 60-line new file - the long diff the compressor must earn on.
