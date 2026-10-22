@@ -1,8 +1,10 @@
 # claude-token-killer
 
 A Claude Code mod that kills wasted tokens at the source: it intercepts the
-three most chatty commands an agent runs — `git status`, `git diff` and
-recursive `grep` — rewrites them into compact forms on the fly, and
+commands an agent runs most — `git status`, `git diff`, `git show`, `git log`,
+recursive `grep`, `ls`, `find`, `docker ps`, `kubectl get`, `pytest`,
+`vitest`, `npm install`, `cargo test`, `go test`, `gh … list` — rewrites
+them into compact forms on the fly where that is provably safe, and
 compresses their output before the model ever sees it.
 
 This is the Claude-native take on
@@ -10,11 +12,14 @@ This is the Claude-native take on
 [PTK](https://github.com/Riaku/ptk): same idea, but instead of shelling
 out to an external binary, the rewrite happens **inside** Claude Code as a
 function-hook mod. No binary to install, no PATH to poison, no wrapper to
-trust — one plugin, three files of logic.
+trust — one plugin, pure TypeScript, zero process spawns.
 
-> **PoC status.** Linux only (the mod no-ops on other platforms). Three
-> commands covered. Caps and formats are opinionated; tune them via plugin
-> options.
+> **Scope.** Bash handlers everywhere except Windows (non-Windows is treated
+> as Linux); the `Get-ChildItem` handler is Windows-only. Everything runs
+> in-process. Caps and formats are opinionated; tune them via plugin
+> options. Only `git status`, `git diff`, `grep`, and `git show` are ever
+> *rewritten* — every other command runs exactly as written and only its
+> output is compressed.
 
 ## What it does
 
@@ -22,14 +27,35 @@ trust — one plugin, three files of logic.
 | --- | --- | --- |
 | `git status` | `git status --porcelain=v1 -b -uall` | `* branch [ahead N]` + one line per file, untracked capped |
 | `git diff` | `git diff --no-color` | `N files changed, +A -R`, per-file `path +x -y`, context collapsed to 1 line, per-file and total caps with recovery hints |
+| `git show` | `git show --no-color` | commit header on one line (`sha7 subject (author, YYYY-MM-DD)`) + the same diff compaction as `git diff` |
+| `git log` | none | one line per commit: `sha7 subject (author, YYYY-MM-DD)`, body reduced to `+N lines`, capped with a recovery hint |
+| `git show --pretty/--format`, `git log --graph/--pretty/--format`, `git log --oneline` | none | untouched — user-chosen format or already compact |
 | `grep -r pat dir/` | `grep -n -r pat dir/` | `K matches in F files`, grouped by file, per-file and total caps, long lines truncated |
+| `ls`, `ls -la` | none — runs exactly as written | `dir/` and `file (size)`, timestamps/owner/group dropped |
+| `find . -name …` | none | grouped by parent directory with counts (`dir/ (3): a.txt b.txt c.txt`) |
+| `docker ps`, `kubectl get <kind>` | none | padded column tables compacted to value rows |
+| `pytest`, `vitest run` | none | failure blocks and summaries kept, progress dots/bars/spinners dropped, counts on one line |
+| `npm`/`pnpm`/`yarn install` | none | summary lines (`added N packages`, `N vulnerabilities`, `WARN`/`ERR`) only |
+| `cargo test` | none | per-binary `test result:` lines and failure blocks; `error` lines always survive |
+| `go test` | none | `--- FAIL` blocks and `ok`/`FAIL` package lines; `=== RUN` noise dropped |
+| `gh pr/issue/run list` | none | padded table → one compact row per item |
 
 Every rewrite is guarded: compound commands (pipes, `&&`, redirects, command
 substitution), machine formats the compressor can't parse (`-z`,
-`--porcelain=2`, `--stat`, `--count`, `--name-only`, …), failed commands,
-and anything else run **exactly as the model wrote them**. A compressor that
-would make the output *longer* is discarded. If the mod itself throws, the
-dispatch is replayed untouched (fail-open).
+`--porcelain=2`, `--stat`, `--count`, `--name-only`, `-o json`, `--json`,
+`-json`, `--format`, `--reporter`, `--help`, …), user-requested live output
+(`pytest -s`, `--pdb`, `cargo test --nocapture`), side-effecting `find`
+predicates (`-exec`, `-delete`, `-fprint`, …), failed commands, and anything
+else run **exactly as the model wrote them**. A compressor that would make
+the output *longer* is discarded. If the mod itself throws, the dispatch is
+replayed untouched (fail-open).
+
+Measured live in one Claude Code session against real commands (bytes the
+model received vs raw stdout): `ls -la` 705 → 105, `git log` 1,179 → 329,
+`git show HEAD` 527 → 171, `kubectl get pods -n apps` 2,588 → 1,529,
+`gh pr list --limit 5` 708 → 627. Savings depend on shape, not just size:
+a `find` whose results are one file per directory barely shrinks (165 → 164,
+shorter by one byte), and the never-inflate guard leaves it alone.
 
 ## PowerShell tool (PoC)
 
@@ -123,12 +149,29 @@ Set via `claude plugin configure token-killer`:
 .claude-plugin/   plugin.json + marketplace.json
 hooks/
   hooks.json      names the module
-  register.ts     the tool.call hook (wiring, guards, fail-open)
-  plan.ts         command -> rewrite planner (safety-critical, pure)
-  compress.ts     output compressors (pure, no I/O)
-tests/            claude-code/testing suites
+  register.ts     the tool.call hook (planner chain, wiring, guards, fail-open)
+  plan.ts         git status/diff + grep: command -> rewrite planner (safety-critical, pure)
+  compress.ts     git status/diff + grep: output compressors (pure, no I/O)
+  gitshow.ts      git show: planner + header compaction, diff body via compress.ts
+  gitlog.ts       git log: planner + one-line-per-commit compaction
+  ls.ts           ls long format: planner + entry compaction
+  find.ts         find: planner (side-effect flags bail) + directory grouping
+  tables.ts       docker ps / kubectl get: generic column-table compactor + planners
+  pytest.ts       pytest output compaction
+  vitest.ts       vitest output compaction
+  npm.ts          npm/pnpm/yarn install output compaction
+  cargotest.ts    cargo test output compaction (error lines always survive)
+  gotest.ts       go test output compaction
+  gh.ts           gh pr|issue|run list table compaction
+  powershell.ts   Windows-only PowerShell handler (Get-ChildItem)
+tests/            claude-code/testing suites, one file per module
 types/            vendored claude-code.d.ts for typechecking
 ```
+
+Each command module is self-contained: a `planX(command)` that returns a
+rewrite or `null`, a `compressX(text, caps)` that returns the original
+unchanged when it doesn't recognize the format, and its own default caps.
+`register.ts` only owns the chain and the shared guards.
 
 ## Development
 
