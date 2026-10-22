@@ -1,6 +1,6 @@
 {
   "name": "token-killer",
   "version": "0.1.0",
-  "description": "Rewrites git status, git diff, git show and recursive grep into token-compact forms, and compresses the output of 18 command families (git, grep, ls, find, docker, kubectl, flux, pytest, vitest, playwright, npm, cargo, go, gh) inside Claude Code. No external binary, zero process spawns.",
+  "description": "Rewrites git status, git diff, git show and recursive grep into token-compact forms, and compresses the output of 23 command families (git, grep/rg, ls, find, docker, kubectl, flux, gh, pytest, vitest, playwright, npm, cargo, go, ps/df/free) inside Claude Code. No external binary, zero process spawns.",
   "author": { "name": "Riaku" }
 }
