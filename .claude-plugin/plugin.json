@@ -6,8 +6,8 @@
   "userConfig": {
     "maxStatusFiles": {
       "type": "number",
-      "title": "Untracked files",
-      "description": "Untracked files listed before the rest are elided with a count.",
+      "title": "Status entries",
+      "description": "Changed and untracked entries listed before the rest are elided with a count.",
       "default": 200,
       "min": 1
     },

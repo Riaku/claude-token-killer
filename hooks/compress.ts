@@ -6,7 +6,7 @@
 import { stripRetry } from './ansi.ts'
 
 export type Caps = {
-  /** git status: cap on listed untracked files before an elision line. */
+  /** git status: cap on listed entries, changed and untracked, before an elision line. */
   maxStatusFiles: number
   /** git diff: kept hunk lines per file before an elision line. */
   maxDiffLinesPerFile: number
@@ -38,8 +38,8 @@ export const DEFAULT_CAPS: Caps = {
 
 /**
  * Compress `git status --porcelain=v1 -b` output: the `##` branch header
- * becomes `* branch [ahead N, behind M]`, XY lines pass through (they are
- * already one line per file), and untracked listings are capped.
+ * becomes `* branch [ahead N, behind M]`, and XY lines pass through (they are
+ * already one line per file) until the entry budget runs out.
  *
  * `-b` puts the branch header on every run, so the only way to get no lines is
  * for the command to produce no output at all. That is passed through: writing
@@ -55,25 +55,36 @@ function compressGitStatusInner(porcelain: string, caps: Caps = DEFAULT_CAPS, co
   if (lines.length === 0) return porcelain
 
   const out: string[] = []
-  let untrackedShown = 0
-  let untrackedTotal = 0
+  // One budget for the whole listing. A tree with 300 modified files is the same
+  // flood as one with 300 untracked files, and the cap is named for the listing,
+  // not for one of its sections.
+  let shown = 0
+  let changedHidden = 0
+  let untrackedHidden = 0
 
   for (const line of lines) {
     if (line.startsWith('## ')) {
       out.push('* ' + line.slice(3))
-    } else if (line.startsWith('?? ')) {
-      untrackedTotal += 1
-      if (untrackedShown < caps.maxStatusFiles) {
-        out.push(line)
-        untrackedShown += 1
-      }
-    } else {
+      continue
+    }
+    const untracked = line.startsWith('?? ')
+    if (shown < caps.maxStatusFiles) {
       out.push(line)
+      shown += 1
+    } else if (untracked) {
+      untrackedHidden += 1
+    } else {
+      changedHidden += 1
     }
   }
 
-  if (untrackedTotal > untrackedShown) {
-    out.push(`... +${untrackedTotal - untrackedShown} more untracked (raw: ${command ? `${command} # tk:raw` : 're-run with # tk:raw'})`)
+  const hidden = changedHidden + untrackedHidden
+  if (hidden > 0) {
+    const parts: string[] = []
+    if (changedHidden > 0) parts.push(`${changedHidden} changed`)
+    if (untrackedHidden > 0) parts.push(`${untrackedHidden} untracked`)
+    const hint = command ? `${command} # tk:raw` : 're-run with # tk:raw'
+    out.push(`... +${hidden} more (${parts.join(', ')}) - raw: ${hint}`)
   }
   return out.join('\n')
 }

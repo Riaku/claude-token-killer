@@ -37,7 +37,9 @@ const CHATTER = /^go: (?:downloading|finding|extracting)\b/
 
 /**
  * Compress `go build`/`go vet` output: drop module-fetch chatter, collapse
- * consecutive identical lines. Diagnostics pass through untouched.
+ * consecutive identical lines. Diagnostics pass through untouched, so nothing
+ * is elided and there is no `# tk:raw` hint to give - a hint would name a
+ * command whose output is already all here.
  */
 export function compressGoBuild(text: string): string {
   const lines = stripAnsi(text).split(/\r\n|\r|\n/)
