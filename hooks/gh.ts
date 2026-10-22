@@ -16,6 +16,7 @@
 // shell untouched.
 
 import { tokenize } from './plan.ts'
+import { stripAnsi } from './ansi.ts'
 
 export type GhPlan = { kind: 'gh'; command: string }
 
@@ -81,7 +82,6 @@ export function planGh(command: string): GhPlan | null {
   return { kind: 'gh', command }
 }
 
-const ANSI = /\x1b\[[0-9;?]*[A-Za-z]/g
 // gh's spinner (braille frames) and cursor-control leftovers.
 const SPINNER = /^[\u2800-\u28FF\s]*$/
 
@@ -128,7 +128,7 @@ function cell(s: string | undefined): string {
 export function compressGh(text: string, caps: GhCaps = {}): string {
   const maxItems = caps.maxItems ?? GH_DEFAULTS.maxItems
 
-  const clean = text.replace(ANSI, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+  const clean = stripAnsi(text).replace(/\r\n/g, '\n').replace(/\r/g, '\n')
   const lines = clean
     .split('\n')
     .filter((l) => l.trim() !== '' && !SPINNER.test(l))

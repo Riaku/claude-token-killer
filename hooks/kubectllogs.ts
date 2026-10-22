@@ -14,13 +14,13 @@
 // bails rather than guess at what it does to the format.
 
 import { tokenize } from './plan.ts'
+import { stripAnsi } from './ansi.ts'
 
 export type KubectlLogsPlan = { kind: 'kubectl-logs'; command: string }
 
 const UNSAFE = /[|;&<>]|\$\(|\$\{|`|\r|\n|#/
 
 // CSI colour/cursor sequences plus the OSC form.
-const ANSI = /\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b\[[0-9;?]*[A-Za-z]/g
 
 /** Flags that consume the following token as their value. */
 const VALUE_FLAGS = new Set([
@@ -130,7 +130,7 @@ export function compressKubectlLogs(
   caps: KubectlLogsCaps = DEFAULT_KUBECTL_LOGS_CAPS,
   rerun: string = 'kubectl logs',
 ): string {
-  const stripped = text.replace(ANSI, '')
+  const stripped = stripAnsi(text)
   const rawLines = stripped.split(/\r\n|\r|\n/)
 
   // Collapse consecutive identical lines. Anything that differs at all (a

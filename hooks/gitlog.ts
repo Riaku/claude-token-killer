@@ -18,6 +18,7 @@
 // reaches the shell untouched.
 
 import { tokenize } from './plan.ts'
+import { stripAnsi } from './ansi.ts'
 
 export type LogPlan = { kind: 'git-log'; command: string }
 
@@ -49,7 +50,6 @@ function basename(token: string): string {
   return token.slice(token.lastIndexOf('/') + 1)
 }
 
-const ANSI = /\x1b\[[0-9;?]*[A-Za-z]/g
 
 const MONTHS: Record<string, string> = {
   Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06',
@@ -132,7 +132,7 @@ type LogEntry = { sha: string; author: string; date: string; subject: string; bo
  * when the result would not be shorter.
  */
 export function compressGitLog(raw: string, caps: LogCaps = DEFAULT_LOG_CAPS): string {
-  const text = raw.replace(ANSI, '')
+  const text = stripAnsi(raw)
   const lines = text.split('\n')
   const entries: LogEntry[] = []
 

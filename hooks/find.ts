@@ -15,6 +15,7 @@
 // `#`, so the tagged re-run reaches the shell untouched.
 
 import { tokenize } from './plan.ts'
+import { stripAnsi } from './ansi.ts'
 
 export type FindPlan = { kind: 'find'; command: string }
 
@@ -74,7 +75,6 @@ export function planFind(command: string): FindPlan | null {
   return { kind: 'find', command }
 }
 
-const ANSI = /\x1b\[[0-9;?]*[A-Za-z]/g
 
 /**
  * True when every line looks like one path from `find`'s default action.
@@ -108,7 +108,7 @@ function splitPath(p: string): { dir: string; base: string } {
  * preserved too, so the model can still read the traversal top-down.
  */
 export function compressFind(raw: string, caps: FindCaps = DEFAULT_FIND_CAPS, command?: string): string {
-  const clean = raw.replace(ANSI, '')
+  const clean = stripAnsi(raw)
   const paths = clean.split('\n').filter((l) => l !== '')
   if (paths.length === 0) return raw
   if (!isPathListing(paths)) return raw

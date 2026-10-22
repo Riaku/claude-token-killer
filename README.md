@@ -161,6 +161,7 @@ hooks/
   hooks.json      names the module
   register.ts     the tool.call hook (planner chain, wiring, guards, fail-open)
   plan.ts         git status/diff + grep: command -> rewrite planner (safety-critical, pure)
+  ansi.ts         the one escape-sequence definition: stripAnsi + the parse-then-retry guard
   compress.ts     git status/diff + grep: output compressors (pure, no I/O)
   gitshow.ts      git show: planner + header compaction, diff body via compress.ts
   gitlog.ts       git log: planner + one-line-per-commit compaction

@@ -14,13 +14,13 @@
 // through unchanged; the compressor never inflates.
 
 import { tokenize } from './plan.ts'
+import { stripAnsi } from './ansi.ts'
 
 export type VitestPlan = { kind: 'vitest'; command: string }
 
 const UNSAFE = /[|;&<>]|\$\(|\$\{|`|\r|\n|#/
 
 // CSI colour/cursor sequences plus the OSC form.
-const ANSI = /\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b\[[0-9;?]*[A-Za-z]/g
 
 // Braille spinner glyphs (ora/cli-cursor) and block-drawing progress bars.
 const SPINNER = /[\u2800-\u28FF]/
@@ -99,7 +99,7 @@ function elision(hidden: number, what: string, rerun: string): string {
  * command quoted in elision markers.
  */
 export function compressVitest(text: string, caps: VitestCaps = DEFAULT_VITEST_CAPS, rerun: string = VITEST_RERUN): string {
-  const lines = text.replace(ANSI, '').split(/\r\n|\r|\n/)
+  const lines = stripAnsi(text).split(/\r\n|\r|\n/)
 
   const segs: Seg[] = []
   const summaryParts: string[] = []

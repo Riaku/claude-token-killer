@@ -2,6 +2,8 @@
 // rtk / ptk's output filters. No I/O, no engine types: every function here is
 // testable in isolation and never inflates its input (callers compare lengths).
 
+import { stripRetry } from './ansi.ts'
+
 export type Caps = {
   /** git status: cap on listed untracked files before an elision line. */
   maxStatusFiles: number
@@ -41,6 +43,10 @@ export const DEFAULT_CAPS: Caps = {
  * "the command produced nothing").
  */
 export function compressGitStatus(porcelain: string, caps: Caps = DEFAULT_CAPS): string {
+  return stripRetry(porcelain, (text) => compressGitStatusInner(text, caps))
+}
+
+function compressGitStatusInner(porcelain: string, caps: Caps = DEFAULT_CAPS): string {
   const lines = porcelain.split('\n').filter((l) => l.trim() !== '')
   if (lines.length === 0) return 'clean - nothing to commit'
 
@@ -160,6 +166,10 @@ function collapseContext(body: string[], ctx: number): string[] {
  * (so a caller's length check passes it through).
  */
 export function compressGitDiff(text: string, caps: Caps = DEFAULT_CAPS): string {
+  return stripRetry(text, (t) => compressGitDiffInner(t, caps))
+}
+
+function compressGitDiffInner(text: string, caps: Caps = DEFAULT_CAPS): string {
   if (!text.includes('diff --git ')) return text
   const files = splitDiffBlocks(text)
   if (files.length === 0) return text
@@ -221,6 +231,10 @@ export function compressGitDiff(text: string, caps: Caps = DEFAULT_CAPS): string
  * shape, the input is returned unchanged.
  */
 export function compressGrep(text: string, caps: Caps = DEFAULT_CAPS): string {
+  return stripRetry(text, (t) => compressGrepInner(t, caps))
+}
+
+function compressGrepInner(text: string, caps: Caps = DEFAULT_CAPS): string {
   const byFile = new Map<string, string[]>()
   const notes: string[] = []
   let total = 0

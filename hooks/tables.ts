@@ -20,6 +20,7 @@
 // this parser is not certain about is returned unchanged, and a result that
 // is not shorter is discarded.
 
+import { stripRetry } from './ansi.ts'
 import { tokenize } from './plan.ts'
 
 /**
@@ -167,7 +168,16 @@ function isHeader(line: string): boolean {
  * `-o json` blob, a `find -ls` listing - or when the result would not be
  * shorter.
  */
+/**
+ * Compress a padded column table. A coloured table is retried on an
+ * escape-stripped copy: the codes sit in front of the header cells, so the
+ * parser does not recognise the shape at all until they are gone.
+ */
 export function compressTable(raw: string, caps: Partial<TableCaps> = DEFAULT_TABLE_CAPS, command?: string): string {
+  return stripRetry(raw, (text) => compressTableInner(text, caps, command))
+}
+
+function compressTableInner(raw: string, caps: Partial<TableCaps> = DEFAULT_TABLE_CAPS, command?: string): string {
   const lines = raw.split('\n')
   const headerAt = lines.findIndex((l) => l.trim() !== '' && isHeader(l))
   if (headerAt < 0) return raw

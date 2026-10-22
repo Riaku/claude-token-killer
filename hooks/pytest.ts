@@ -17,6 +17,7 @@
 // inflates.
 
 import { tokenize } from './plan.ts'
+import { stripAnsi } from './ansi.ts'
 
 export type PytestPlan = { kind: 'pytest'; command: string }
 
@@ -25,7 +26,6 @@ export type PytestPlan = { kind: 'pytest'; command: string }
 const UNSAFE = /[|;&<>]|\$\(|\$\{|`|\r|\n|#/
 
 // CSI colour/cursor sequences plus the OSC form some plugins emit.
-const ANSI = /\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b\[[0-9;?]*[A-Za-z]/g
 
 export type PytestCaps = {
   /** kept failure/error detail blocks before the rest are elided. */
@@ -144,7 +144,7 @@ export function compressPytest(
   caps: PytestCaps = DEFAULT_PYTEST_CAPS,
   rerun: string = PYTEST_RERUN,
 ): string {
-  const lines = text.replace(ANSI, '').split(/\r\n|\r|\n/)
+  const lines = stripAnsi(text).split(/\r\n|\r|\n/)
 
   let sawShape = false
   let section: 'start' | 'progress' | 'fail' | 'summary' | 'warn' | 'other' = 'start'

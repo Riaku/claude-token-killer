@@ -13,6 +13,7 @@
 // re-run reaches the shell untouched.
 
 import { tokenize } from './plan.ts'
+import { stripAnsi } from './ansi.ts'
 
 export type GoTestPlan = { kind: 'go-test'; command: string }
 
@@ -67,7 +68,6 @@ export function planGoTest(command: string): GoTestPlan | null {
   return { kind: 'go-test', command }
 }
 
-const ANSI = /\x1b\[[0-9;?]*[A-Za-z]/g
 
 // Per-test lifecycle noise (go 1.24 adds === NAME).
 const LIFECYCLE = /^=== (RUN|PAUSE|CONT|NAME)\b/
@@ -97,7 +97,7 @@ export function compressGoTest(text: string, caps: GoTestCaps = {}): string {
   const maxFailures = caps.maxFailures ?? GO_TEST_DEFAULTS.maxFailures
   const maxLines = caps.maxLinesPerFailure ?? GO_TEST_DEFAULTS.maxLinesPerFailure
 
-  const clean = text.replace(ANSI, '')
+  const clean = stripAnsi(text)
   const lines = clean.split('\n')
   const looksLikeGoTest =
     /^(ok|FAIL|\?)\s+\S/m.test(clean) || /^--- FAIL: /m.test(clean) || /^=== RUN /m.test(clean)

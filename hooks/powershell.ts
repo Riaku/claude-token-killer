@@ -11,6 +11,7 @@
 // re-run tagged `# tk:raw`, and the planner bails on `#` (a comment in
 // PowerShell too), so the tagged re-run reaches the shell untouched.
 
+import { stripAnsi } from './ansi.ts'
 export type PsPlan = { kind: 'ps-dir'; command: string }
 
 // Same bail set as the Bash planner: pipes, statement separators,
@@ -30,7 +31,6 @@ export function planPowerShell(command: string): PsPlan | null {
   return { kind: 'ps-dir', command: cmd }
 }
 
-const ANSI = /\x1b\[[0-9;?]*[A-Za-z]/g
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -60,7 +60,7 @@ const MODE = /^[dlarwxLAHs@-]{4,10}$/
  * letting the caller's never-inflate comparison discard the attempt.
  */
 export function compressPsDir(raw: string, maxEntries: number): string {
-  const clean = raw.replace(ANSI, '')
+  const clean = stripAnsi(raw)
   const sections: Array<{ dir: string | null; rows: string[] }> = []
   let cur: { dir: string | null; rows: string[] } = { dir: null, rows: [] }
   let sawTable = false

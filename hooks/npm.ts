@@ -19,12 +19,12 @@
 // Unrecognized text passes through unchanged; never inflate.
 
 import { tokenize } from './plan.ts'
+import { stripAnsi } from './ansi.ts'
 
 export type NpmPlan = { kind: 'npm-install'; command: string }
 
 const UNSAFE = /[|;&<>]|\$\(|\$\{|`|\r|\n|#/
 
-const ANSI = /\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b\[[0-9;?]*[A-Za-z]/g
 
 // Braille spinners (cli-spinners: ⠋⠙⠹...) and block-drawing progress bars.
 const SPINNER = /[\u2800-\u28FF]/
@@ -122,7 +122,7 @@ function elision(hidden: number, rerun: string): string {
  * markers.
  */
 export function compressNpmInstall(text: string, caps: NpmCaps = DEFAULT_NPM_CAPS, rerun: string = NPM_RERUN): string {
-  const clean = text.replace(ANSI, '')
+  const clean = stripAnsi(text)
   const out: string[] = []
   let sawShape = false
   let warnShown = 0

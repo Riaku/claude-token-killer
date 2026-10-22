@@ -16,6 +16,7 @@
 
 import { DEFAULT_CAPS, compressGitDiff } from './compress.ts'
 import { tokenize } from './plan.ts'
+import { stripAnsi } from './ansi.ts'
 
 export type ShowPlan = { kind: 'git-show'; command: string }
 
@@ -84,7 +85,6 @@ function flagName(token: string): string {
   return token.startsWith('-') ? token.split('=')[0] : token
 }
 
-const ANSI = /\x1b\[[0-9;?]*[A-Za-z]/g
 
 const MONTHS: Record<string, string> = {
   Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06',
@@ -180,7 +180,7 @@ export function planGitShow(command: string): ShowPlan | null {
  * when the result would not be shorter.
  */
 export function compressGitShow(raw: string, caps: ShowCaps = DEFAULT_SHOW_CAPS): string {
-  const text = raw.replace(ANSI, '')
+  const text = stripAnsi(raw)
   const lines = text.split('\n')
   const first = lines[0] ?? ''
   const m = COMMIT_HEADER.exec(first)
