@@ -1,9 +1,13 @@
-// token-killer: tool.call hooks that rewrite git status / git diff /
-// recursive grep into compact forms on the way out, and compress their
-// stdout on the way back in - inside the Claude Code process, no external
-// binary. The Bash handler runs everywhere except Windows (non-Windows is
-// treated as Linux); the PowerShell handler (Get-ChildItem) is
-// Windows-only. Everything else is a no-op.
+// token-killer: tool.call hooks that rewrite token-hungry commands into
+// compact forms on the way out, and compress their stdout on the way back
+// in - inside the Claude Code process, no external binary. The Bash handler
+// runs everywhere except Windows (non-Windows is treated as Linux); the
+// PowerShell handler (Get-ChildItem) is Windows-only. Everything else is a
+// no-op.
+//
+// Coverage: git status / diff / show / log, recursive grep, ls, find,
+// docker ps, kubectl get, pytest, vitest, npm|pnpm install, cargo test,
+// go test, and gh pr|issue|run list.
 //
 // Fail-open by design: a compressor that throws simply lets the original
 // output through (the engine skips a throwing hook). Unlike a redactor, the
@@ -13,13 +17,66 @@ import type { Register } from 'claude-code'
 import { DEFAULT_CAPS, compressGitDiff, compressGitStatus, compressGrep, type Caps } from './compress.ts'
 import { planRewrite } from './plan.ts'
 import { compressPsDir, planPowerShell } from './powershell.ts'
+import { compressCargoTest, planCargoTest } from './cargotest.ts'
+import { compressFind, planFind } from './find.ts'
+import { compressGh, planGh } from './gh.ts'
+import { compressGitLog, planGitLog } from './gitlog.ts'
+import { compressGitShow, planGitShow } from './gitshow.ts'
+import { compressGoTest, planGoTest } from './gotest.ts'
+import { compressLs, planLs } from './ls.ts'
+import { compressNpmInstall, planNpmInstall } from './npm.ts'
+import { compressPytest, planPytest } from './pytest.ts'
+import { compressTable, planDocker, planKubectlGet } from './tables.ts'
+import { compressVitest, planVitest } from './vitest.ts'
 
 type Options = Partial<Caps> & { notify?: boolean }
 
-const COMPRESSORS: Record<string, (text: string, caps: Caps) => string> = {
-  'git-status': compressGitStatus,
-  'git-diff': compressGitDiff,
-  grep: compressGrep,
+type Plan = { kind: string; command: string }
+
+// Every planner is a pure function of the command string. First match wins;
+// a null from all of them means "leave this command alone".
+const PLANNERS: ReadonlyArray<(command: string) => Plan | null> = [
+  planRewrite,
+  planGitShow,
+  planGitLog,
+  planLs,
+  planFind,
+  planDocker,
+  planKubectlGet,
+  planPytest,
+  planVitest,
+  planNpmInstall,
+  planCargoTest,
+  planGoTest,
+  planGh,
+]
+
+function planAny(command: string): Plan | null {
+  for (const planner of PLANNERS) {
+    const plan = planner(command)
+    if (plan) return plan
+  }
+  return null
+}
+
+// The `command` is handed to compressors that quote a re-run hint (`# tk:raw`)
+// so the elision line names the command the model actually ran.
+const COMPRESSORS: Record<string, (text: string, caps: Caps, command: string) => string> = {
+  'git-status': (t, c) => compressGitStatus(t, c),
+  'git-diff': (t, c) => compressGitDiff(t, c),
+  'git-show': (t) => compressGitShow(t),
+  'git-log': (t, _c, cmd) => compressGitLog(t, { maxEntries: 50, rerun: cmd }),
+  grep: (t, c) => compressGrep(t, c),
+  ls: (t, c, cmd) => compressLs(t, { maxEntries: c.maxDirEntries }, cmd),
+  find: (t, c, cmd) => compressFind(t, { maxEntries: c.maxDirEntries }, cmd),
+  'docker-ps': (t, _c, cmd) => compressTable(t, undefined, cmd),
+  'kubectl-get': (t, _c, cmd) => compressTable(t, undefined, cmd),
+  pytest: (t, _c, cmd) => compressPytest(t, undefined, cmd),
+  vitest: (t, _c, cmd) => compressVitest(t, undefined, cmd),
+  'npm-install': (t, _c, cmd) => compressNpmInstall(t, undefined, cmd),
+  'cargo-test': (t) => compressCargoTest(t),
+  'go-test': (t) => compressGoTest(t),
+  gh: (t) => compressGh(t),
 }
 
 export const register: Register = (on, options) => {
@@ -55,7 +112,7 @@ export const register: Register = (on, options) => {
     const command = (e as { command?: unknown }).command
     if (typeof command !== 'string') return next(e)
 
-    const plan = planRewrite(command)
+    const plan = planAny(command)
     if (!plan) return next(e)
 
     // Gate after the plan: non-candidate commands never even read the env.
@@ -77,7 +134,9 @@ export const register: Register = (on, options) => {
       typeof res === 'string' ? res : res && typeof res.stdout === 'string' ? res.stdout : null
     if (original === null || original === '') return r
 
-    const compressed = COMPRESSORS[plan.kind](original, caps)
+    const compress = COMPRESSORS[plan.kind]
+    if (!compress) return r
+    const compressed = compress(original, caps, plan.command)
 
     // Never trade a smaller answer for a wrong one: only replace when the
     // compressor actually shrank the text.

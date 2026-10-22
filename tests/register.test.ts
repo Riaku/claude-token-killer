@@ -219,3 +219,149 @@ test('Bash on Windows is untouched: OS=Windows_NT gates the rewrite off', async 
   expect(r.result.stdout).toContain('## main')
   expect(spawns).toBe(0)
 })
+
+// ------------------------------------------------- dispatch through tool.call
+// The module tests exercise the compressors directly; these prove the planner
+// chain + COMPRESSORS map actually wire them into the Bash handler.
+
+test('ls -la is compacted through the handler', async ($, on) => {
+  const seen: string[] = []
+  const raw = [
+    'total 28',
+    'drwxr-xr-x  4 hermes hermes 4096 Oct 22 02:27 .',
+    'drwxrwxrwt  1 root   root   4096 Oct 22 02:27 ..',
+    '-rw-r--r--  1 hermes hermes    6 Oct 22 02:27 a.txt',
+    'drwxr-xr-x  2 hermes hermes 4096 Oct 22 02:27 projects',
+    'lrwxrwxrwx  1 hermes hermes    5 Oct 22 02:27 link.txt -> a.txt',
+    '',
+  ].join('\n')
+  fakeBash(on, raw, seen)
+  await boot($)
+
+  const r = await call($, 'ls -la')
+  expect(seen[0]).toBe('ls -la')
+  expect(r.result.stdout).toContain('a.txt')
+  expect(r.result.stdout).toContain('projects/')
+  expect(r.result.stdout.length).toBeLessThan(raw.length)
+  expect(r.result.stdout).not.toContain('Oct 22 02:27')
+})
+
+test('git show is rewritten with --no-color and its header collapsed', async ($, on) => {
+  const seen: string[] = []
+  const raw = [
+    'commit 75a02562d02fe0a41448b8f873e53359d54c1f57',
+    'Author: Ada Lovelace <ada@example.com>',
+    'Date:   Wed Mar 4 16:45:00 2026 +0000',
+    '',
+    '    Add c.txt',
+    '',
+    '    A longer body that the model does not need verbatim.',
+    '',
+    'diff --git a/c.txt b/c.txt',
+    'new file mode 100644',
+    'index 0000000..587be6b',
+    '--- /dev/null',
+    '+++ b/c.txt',
+    '@@ -0,0 +1,3 @@',
+    '+x',
+    '+y',
+    '+z',
+    '',
+  ].join('\n')
+  fakeBash(on, raw, seen)
+  await boot($)
+
+  const r = await call($, 'git show HEAD')
+  expect(seen[0]).toBe('git show HEAD --no-color')
+  expect(r.result.stdout).toContain('75a0256')
+  expect(r.result.stdout).toContain('Add c.txt')
+  expect(r.result.stdout).not.toContain('Author:')
+  expect(r.result.stdout.length).toBeLessThan(raw.length)
+})
+
+test('git log commits collapse to one line each', async ($, on) => {
+  const seen: string[] = []
+  // Real git log indents every message line by four spaces, blank message
+  // lines included (`cat -A` shows `    $`). Keep that shape exactly.
+  const block = (sha: string, subject: string) =>
+    [
+      `commit ${sha}`,
+      'Author: Ada Lovelace <ada@example.com>',
+      'Date:   Wed Mar 4 16:45:00 2026 +0000',
+      '',
+      `    ${subject}`,
+      '    ',
+      '    Body line that costs tokens and carries nothing actionable.',
+      '',
+    ].join('\n')
+  const raw = block('75a02562d02fe0a41448b8f873e53359d54c1f57', 'Add c.txt') +
+    block('86553b0a1d2e3f405162738495a6b7c8d9e0f112', 'Extend a.txt with delta')
+  fakeBash(on, raw, seen)
+  await boot($)
+
+  const r = await call($, 'git log -n 2')
+  expect(seen[0]).toBe('git log -n 2') // compression-only: never rewritten
+  expect(r.result.stdout).toContain('Add c.txt')
+  expect(r.result.stdout).toContain('Extend a.txt with delta')
+  expect(r.result.stdout).not.toContain('Author:')
+  expect(r.result.stdout.length).toBeLessThan(raw.length)
+})
+
+test('pytest failures survive, progress noise does not', async ($, on) => {
+  const seen: string[] = []
+  const raw = [
+    '=== test session starts ===',
+    'platform linux -- Python 3.12.0, pytest-8.0.0',
+    'collected 7 items',
+    '',
+    'tests/test_a.py ....F..                                              [100%]',
+    '',
+    '=== FAILURES ===',
+    '___ test_y ___',
+    '',
+    '    assert 1 == 2',
+    'E   assert 1 == 2',
+    '',
+    '=== short test summary info ===',
+    'FAILED tests/test_a.py::test_y - AssertionError',
+    '=== 1 failed, 6 passed in 0.12s ===',
+    '',
+  ].join('\n')
+  fakeBash(on, raw, seen)
+  await boot($)
+
+  const r = await call($, 'pytest')
+  expect(seen[0]).toBe('pytest')
+  expect(r.result.stdout).toContain('FAILED tests/test_a.py::test_y')
+  expect(r.result.stdout).toContain('6 passed')
+  expect(r.result.stdout.length).toBeLessThan(raw.length)
+})
+
+test('kubectl get pods is compacted to value rows', async ($, on) => {
+  const seen: string[] = []
+  const raw = [
+    'NAME                           READY   STATUS    RESTARTS   AGE',
+    'hermes-7d9f8c6b5-abcde         1/1     Running   0          2d',
+    'postgres-0                     1/1     Running   1          5d',
+    'longhorn-manager-x2k4p         1/1     Running   3          12d',
+    '',
+  ].join('\n')
+  fakeBash(on, raw, seen)
+  await boot($)
+
+  const r = await call($, 'kubectl get pods')
+  expect(seen[0]).toBe('kubectl get pods')
+  expect(r.result.stdout).toContain('hermes-7d9f8c6b5-abcde')
+  expect(r.result.stdout.length).toBeLessThan(raw.length)
+})
+
+test('a look-alike command the planner does not model stays untouched', async ($, on) => {
+  const seen: string[] = []
+  const raw = 'NAME   MAJ:MIN RM  SIZE RO TYPE MOUNTPOINTS\nsda      8:0    0  500G  0 disk /\n'
+  fakeBash(on, raw, seen)
+  await boot($)
+
+  const r = await call($, 'lsblk')
+  expect(seen[0]).toBe('lsblk')
+  expect(r.result.stdout).toBe(raw)
+})
