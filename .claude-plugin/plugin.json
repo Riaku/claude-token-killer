@@ -1,7 +1,7 @@
 {
   "name": "token-killer",
   "version": "0.1.0",
-  "description": "Rewrites git status, git diff, git show and recursive grep into token-compact forms, and compresses the output of 23 command families (git, grep/rg, ls, find, docker, kubectl, flux, gh, pytest, vitest, playwright, npm, cargo, go, ps/df/free) inside Claude Code. No external binary, zero process spawns.",
+  "description": "Rewrites git status, git diff, git show and recursive grep into token-compact forms, then compacts command output inside Claude Code: git, grep and rg, directory listings, docker and kubectl, flux, gh, pytest, vitest, playwright, npm, cargo, go, and host listings. No external binary, zero process spawns.",
   "author": { "name": "Riaku" },
   "userConfig": {
     "maxStatusFiles": {
@@ -49,7 +49,7 @@
     "maxDirEntries": {
       "type": "number",
       "title": "Directory entries",
-      "description": "Entries listed per directory before the rest are elided with a count.",
+      "description": "Entries listed before the rest are elided with a count. ls and find share one budget across every directory; Get-ChildItem applies it per directory.",
       "default": 200,
       "min": 1
     },

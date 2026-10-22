@@ -23,8 +23,6 @@ export type GhPlan = { kind: 'gh'; command: string }
 export type GhCaps = {
   /** list items kept before an elision line. */
   maxItems?: number
-  // Optional + index signature: the shared `Caps` from ./compress.ts is an
-  // acceptable argument even though it carries the git/grep caps instead.
   [key: string]: unknown
 }
 

@@ -22,9 +22,6 @@ export type CargoTestCaps = {
   maxFailures?: number
   /** lines kept per failure block before an elision marker. */
   maxLinesPerFailure?: number
-  // An index signature so a caller can hand in the shared `Caps` object from
-  // ./compress.ts (which carries the git/grep caps, not these) without a type
-  // error: every field here is optional and unknown keys are ignored.
   [key: string]: unknown
 }
 

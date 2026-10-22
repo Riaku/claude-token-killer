@@ -25,8 +25,6 @@ export type PytestPlan = { kind: 'pytest'; command: string }
 // command substitution, backticks, newlines, comments.
 const UNSAFE = /[|;&<>]|\$\(|\$\{|`|\r|\n|#/
 
-// CSI colour/cursor sequences plus the OSC form some plugins emit.
-
 export type PytestCaps = {
   /** kept failure/error detail blocks before the rest are elided. */
   maxFailures: number

@@ -1,12 +1,12 @@
 {
   "name": "claude-token-killer",
-  "description": "Claude Code mods that cut token waste: token-killer rewrites git status / git diff / grep into compact forms on the fly.",
+  "description": "Claude Code mods that cut token waste: token-killer rewrites git status, git diff, git show and recursive grep, then compacts the output, in process.",
   "owner": { "name": "Riaku" },
   "plugins": [
     {
       "name": "token-killer",
       "source": "./",
-      "description": "Rewrites git status, git diff, git show and recursive grep on the fly, and compresses 23 command families, inside Claude Code. No external binary, no process spawns."
+      "description": "Rewrites git status, git diff, git show and recursive grep on the fly, then compacts command output, inside Claude Code. No external binary, no process spawns."
     }
   ]
 }

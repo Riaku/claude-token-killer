@@ -1,8 +1,7 @@
 // `kubectl exec … -- ls -l` reuses the ls compactor.
 //
-// 474 `kubectl exec` invocations in this cluster's session history, and the
-// dominant form is `kubectl exec <pod> -c <container> -- ls -la <dir>`: the
-// output is byte-identical to a local `ls -la`, just remote. So the inner
+// The dominant form is `kubectl exec <pod> -c <container> -- ls -la <dir>`, and
+// its output is byte-identical to a local `ls -la`, just remote. So the inner
 // command is routed to compressLs and nothing else is touched.
 //
 // Deliberately narrow:

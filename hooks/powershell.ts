@@ -1,4 +1,4 @@
-// PoC: PowerShell tool support for `Get-ChildItem` (and its aliases gci/ls/dir).
+// PowerShell tool support for `Get-ChildItem` (and its aliases gci/ls/dir).
 //
 // The PowerShell tool only registers on Windows, so this handler is inert
 // elsewhere - no gate needed; a tool that never fires never triggers.
