@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import { hasAnsi, stripAnsi, stripRetry } from '../hooks/ansi.ts'
-import { DEFAULT_CAPS, compressGitDiff, compressGitStatus, compressGrep } from '../hooks/compress.ts'
+import { compressGitDiff, compressGitStatus, compressGrep } from '../hooks/compress.ts'
 import { compressTable } from '../hooks/tables.ts'
 
 // A colored table: the escape codes sit in front of the header cells and around

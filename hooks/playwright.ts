@@ -63,9 +63,9 @@ export function planPlaywright(command: string): PlaywrightPlan | null {
 export type PlaywrightCaps = {
   /** failure blocks kept before the rest are elided. */
   maxFailures: number
-  /** lines kept from each failure block. */
+  /** lines kept from each failure block before an elision line names the total. */
   maxLinesPerFailure: number
-  /** separate lines of the summary before they are folded. */
+  /** summary lines joined with ` · `; the rest become a `+N more` marker. */
   maxSummaryLines: number
 }
 
@@ -99,11 +99,16 @@ export function compressPlaywright(
   let inFailure = false
   let failureLines = 0
   let elidedFailures = 0
+  let droppedFailureLines = 0
   let sawShape = false
 
   const closeFailure = (): void => {
+    if (droppedFailureLines > 0) {
+      out.push(`... +${droppedFailureLines} lines of this failure elided - raw: ${rerun} # tk:raw`)
+    }
     inFailure = false
     failureLines = 0
+    droppedFailureLines = 0
   }
 
   for (const raw of lines) {
@@ -116,6 +121,8 @@ export function compressPlaywright(
       if (failureLines < caps.maxLinesPerFailure) {
         failureLines += 1
         out.push('')
+      } else {
+        droppedFailureLines += 1
       }
       continue
     }
@@ -158,7 +165,10 @@ export function compressPlaywright(
     }
 
     if (inFailure) {
-      if (failureLines >= caps.maxLinesPerFailure) continue
+      if (failureLines >= caps.maxLinesPerFailure) {
+        droppedFailureLines += 1
+        continue
+      }
       failureLines += 1
       out.push(line)
       continue
@@ -173,9 +183,9 @@ export function compressPlaywright(
     out.push(`... +${elidedFailures} more failures - raw: ${rerun} # tk:raw`)
   }
   if (summary.length > 0) {
-    const parts = summary.slice(0, caps.maxSummaryLines)
-    const dropped = summary.slice(caps.maxSummaryLines)
-    out.push(dropped.length > 0 ? `${parts.join(' · ')} · ${dropped.join(' · ')}` : parts.join(' · '))
+    const shown = summary.slice(0, caps.maxSummaryLines)
+    const hidden = summary.length - shown.length
+    out.push(`${shown.join(' · ')}${hidden > 0 ? ` · +${hidden} more` : ''}`)
   }
 
   const joined = out.join('\n')

@@ -4,11 +4,10 @@
 //
 //   <job> \t <step> \t 2026-01-02T03:04:05.1234567Z <message>
 //
-// with a BOM on the very first line. A CI log is the largest single blob an
-// agent reads in a normal session, and most of it is not information: a 31-byte
-// RFC3339 timestamp per line, the runner preamble ("##[group]Initializing the
-// repository", the image provisioner banner), and checkout chatter. On a real
-// 593-line job that is 64 KB of output for maybe 3 KB of signal.
+// with a BOM on the very first line. Most of a CI log is not information: an
+// RFC3339 timestamp on every line, the runner preamble ("##[group]Initializing
+// the repository", the image provisioner banner), and checkout chatter. A
+// 593-line job is 64 KB of output for a few KB of signal.
 //
 // So the compressor keeps the structure the model actually needs - which job,
 // which step, and what each step printed - and drops the rest:

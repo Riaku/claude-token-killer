@@ -4,8 +4,7 @@
 // through compressTable. They are not: ps and df pad columns to fixed widths
 // with right-justified numbers, so slicing a row at the header's column offsets
 // clips the digits out of `PID` and `Size`, and compressTable's `2+ spaces`
-// split gets a different field count on nearly every row. Measured on this
-// host: all six declined, byte for byte.
+// split gets a different field count on nearly every row.
 //
 // Two things are worth doing instead.
 //
@@ -14,8 +13,7 @@
 //    columns is known per command, so the first N-1 fields are re-joined with
 //    single spaces and the *last* field is kept verbatim: that is what holds
 //    `ps aux`'s COMMAND together when a process name contains two spaces
-//    (`/opt/My  App`). Measured: df 49%, kubectl top nodes 38%, top pods 35%,
-//    free 21%, docker images 17%, ps aux 14%.
+//    (`/opt/My  App`).
 //
 // 2. Cap the row count. `ps aux` on a busy node is hundreds of lines and the
 //    model usually wants "what is the top memory consumer", not every row. Past

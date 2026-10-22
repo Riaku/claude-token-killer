@@ -20,8 +20,6 @@ export type KubectlLogsPlan = { kind: 'kubectl-logs'; command: string }
 
 const UNSAFE = /[|;&<>]|\$\(|\$\{|`|\r|\n|#/
 
-// CSI colour/cursor sequences plus the OSC form.
-
 /** Flags that consume the following token as their value. */
 const VALUE_FLAGS = new Set([
   '-n',

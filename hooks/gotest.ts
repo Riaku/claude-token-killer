@@ -22,8 +22,6 @@ export type GoTestCaps = {
   maxFailures?: number
   /** lines kept per failure block before an elision marker. */
   maxLinesPerFailure?: number
-  // Optional + index signature: the shared `Caps` from ./compress.ts is an
-  // acceptable argument even though it carries the git/grep caps instead.
   [key: string]: unknown
 }
 

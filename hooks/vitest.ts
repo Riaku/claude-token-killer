@@ -20,15 +20,12 @@ export type VitestPlan = { kind: 'vitest'; command: string }
 
 const UNSAFE = /[|;&<>]|\$\(|\$\{|`|\r|\n|#/
 
-// CSI colour/cursor sequences plus the OSC form.
-
 // Braille spinner glyphs (ora/cli-cursor) and block-drawing progress bars.
 const SPINNER = /[\u2800-\u28FF]/
 const PROGRESS = /[\u2588\u2584\u2585\u2586\u2587\u2581\u2582\u2583\u258D\u258E\u258F]/
 
 // `❯` is vitest's "this file has failures" marker, `↓` skipped, `↺` retried.
 const RESULT_LINE = /^[✓√✗×❯↓↺]\s+\S/
-const FILE_RESULT = /^[✓√✗×❯↓]\s+\S.*\(\d+ tests?(?: \| \d+ (?:failed|skipped|todo))?\)/
 const FAIL_START = /^(?:FAIL|✗|×|❯)\s+\S/
 const RUN_BANNER = /^(?:RUN|START)\s+v?\d[\w.]*/
 const FAILURES_BANNER = /^[⎯─═|]{3,}.*(?:Failed Tests|Unhandled Errors|Failed Suites|Failed Files)/

@@ -8,12 +8,13 @@ This is the Claude-native take on [rtk](https://github.com/rtk-ai/rtk) and
 [PTK](https://github.com/Riaku/ptk) — same idea, executed inside Claude Code
 instead of in a wrapper around it.
 
-The mod does two things:
+The mod works at two points in a tool call:
 
-- **Rewrites** four commands into forms whose output is cheaper to produce
-  and to parse.
-- **Compresses** the output of 23 command families, from repository state and
-  search results to cluster tables, CI logs, and test runs.
+- **Before the call runs**, four commands are rewritten into forms whose output
+  is cheaper to produce and to parse.
+- **After it runs**, the output of the commands in [What it saves](#what-it-saves)
+  is compacted: repository state and search results, cluster tables, CI logs,
+  and test runs.
 
 ## Install
 
@@ -30,17 +31,19 @@ To try it without installing anything:
 claude --plugin-dir /path/to/claude-token-killer
 ```
 
-**Requirements:** Claude Code 2.1.287 or later, where mods are on by
-default; the Desktop app needs 2.1.286 or later. The early-access
-`CLAUDE_CODE_ENABLE_FUNCTION_HOOKS` variable is ignored from 2.1.287 on, so it
-is not needed.
+**Requirements:** Claude Code 2.1.287 or later in the terminal, or 2.1.286 or
+later in the Desktop app. Mods are on by default in both. If you set
+`CLAUDE_CODE_ENABLE_FUNCTION_HOOKS` during early access, remove it: 2.1.287 and
+later ignore the variable. See
+[Mods](https://code.claude.com/docs/en/plugins/mods/overview).
 
 ## What it saves
 
-Each row below compares the bytes the model receives with the mod against the
-bytes the same command printed without it. One representative run per row,
-measured on this project's own workspace, a 40-file working tree, a 240-line
-pod log, and recorded fixtures for the toolchains not installed here.
+Each row compares the bytes the model receives with the mod against the bytes
+the same command printed without it. One representative run per row, measured on
+this project's own workspace, a 40-file working tree, and a 240-line pod log.
+Rows for toolchains that were not installed here replay fixtures whose headers
+say they were written to each tool's documented output shape.
 
 | Command | Raw | With the mod | Saved | What changes |
 | --- | --- | --- | --- | --- |
@@ -53,12 +56,12 @@ pod log, and recorded fixtures for the toolchains not installed here.
 | `ls -la` | 841 B | 194 B | 77% | `dir/` and `file (size)`; owner, group, and timestamps dropped |
 | `find` | 2,014 B | 1,419 B | 30% | results grouped by parent directory with counts |
 | `kubectl get pods` | 2,647 B | 1,555 B | 41% | padded columns reduced to value rows |
-| `kubectl get nodes -o wide` | 888 B | 701 B | 21% | same treatment; `wide` is a padded table, not a machine format |
+| `kubectl get nodes -o wide` | 888 B | 701 B | 21% | padding squeezed; the extra `wide` columns are kept |
 | `kubectl logs` | 16,719 B | 1,652 B | 90% | repeated lines collapsed to `line  xN`, head and tail kept, every error and warning line rescued |
 | `kubectl exec -- ls -la` | 841 B | 194 B | 77% | the inner listing is compacted as if it had run locally |
 | `flux get` | 432 B | 351 B | 19% | tabwriter output compacted |
 | `gh run view --log` † | 63,911 B | 10,256 B | 84% | one block per job and step, timestamps and runner markers dropped, failures kept verbatim |
-| `gh pr checks` | 102 B | 33 B | 68% | the job URL becomes the job id, which is what re-runs that job |
+| `gh pr checks` | 102 B | 33 B | 68% | the job URL becomes the job id that `gh run view --job <id> --log` takes |
 | `ps aux` | 6,318 B | 5,636 B | 11% | column padding squeezed, trailing command kept intact, rows capped |
 | `df -h` | 2,201 B | 1,138 B | 48% | same squeeze |
 | `free -h` | 207 B | 106 B | 49% | same squeeze |
@@ -75,6 +78,11 @@ pod log, and recorded fixtures for the toolchains not installed here.
 † Measured with the compressor directly. In a live session an output that size
 is saved to a file before the mod sees it (see [Limits](#limits)), so the model
 reads that log from the file instead.
+
+The table lists the commands whose output shape is stable and whose saving was
+measured. `rg` reuses the grep row; `gh issue list` and `gh run list` share the
+`gh pr` list compactor; `docker ps`, `docker images` and `gh pr view` are
+compacted but have no row of their own.
 
 Savings track output shape more than output size. A directory listing whose
 entries are wrapped by the console width, or a search whose hits are one per
@@ -142,16 +150,16 @@ and no cache to expire.
 
 ## Limits
 
-- **Results over 30 KB never reach the mod.** When a command prints more than
-  30,000 bytes, Claude Code writes the output to a file and gives the model a
-  stub of about 2.2 KB that names the file, so there is nothing for the mod to
-  compress. Measured on this repository: a 30,000-byte output arrived whole,
-  while outputs of 31,000, 33,000, 58,000, 64,000, 70,000 and 86,000 bytes all
-  arrived as stubs. A large commit or log is therefore read from that file at
-  full size; only results under the limit benefit.
-- **Native Windows gets no Bash compression.** The gate treats only Windows
-  as Windows, so the Bash handlers stay inert there; under WSL the platform
-  reports Linux and they apply. The PowerShell handler covers the native case.
+- **Results over 30,000 bytes never reach the mod.** Claude Code writes larger
+  output to a file and gives the model a stub of about 2.2 KB naming that file,
+  so there is nothing to compress. Measured on this repository: 30,000 bytes
+  arrived whole; 31,000, 33,000, 58,000, 64,000, 70,000 and 86,000 bytes arrived
+  as stubs. A large commit or log is read from the file at full size; only
+  results under the limit benefit.
+- **Native Windows gets no Bash compression.** The gate treats only
+  `OS=Windows_NT` as Windows, so the Bash handlers stay inert there; under WSL
+  the platform reports Linux and they apply. The PowerShell handler covers the
+  native case.
 - **No compound commands.** Splitting on `&&` or `;` would mean deciding which
   side effects are safe to enter, which cannot be done reliably.
 
@@ -173,8 +181,7 @@ the console wraps onto a second line are joined back together before parsing;
 at the default 80 columns that is the common case, not the edge case.
 
 The handler stays inert unless the platform reports Windows: the gate is one
-memoized environment read, and no process is spawned to decide it. This mod
-does not trim output when the PowerShell tool is enabled on Linux or macOS.
+memoized environment read, and no process is spawned to decide it.
 
 ## Performance
 
@@ -184,7 +191,7 @@ planner chain returns before that read for any command the mod does not cover.
 
 ## Change the limits
 
-Caps are opinionated defaults, not policy. Adjust them per project:
+Caps are defaults, not policy. You can change them per project:
 
 ```bash
 claude plugin configure token-killer
@@ -198,7 +205,7 @@ claude plugin configure token-killer
 | `maxGrepPerFile` | 8 | kept matches per file |
 | `maxGrepTotal` | 150 | kept matches across all files |
 | `maxLineLen` | 200 | truncate longer match lines |
-| `maxDirEntries` | 200 | entries listed per directory before elision |
+| `maxDirEntries` | 200 | entries listed before elision; `ls` and `find` spend one budget across all directories, `Get-ChildItem` applies it per directory |
 | `notify` | `true` | show a toast with bytes saved when at least 200 bytes were saved |
 
 ## Develop
@@ -217,15 +224,14 @@ exits non-zero on a failure. `test:live:windows` does the same for
 `Get-ChildItem` against the real `pwsh`.
 
 CI runs the unit suite on Linux, macOS and Windows, the PowerShell check on
-Windows, and `test:live` on Linux with pytest, Go and Rust installed. The
-point of the last one is version drift: the fixtures replay output recorded
-once, so a change in how `pytest -q` or `cargo test` formats a failure would
-otherwise reach users unnoticed.
+Windows, and `test:live` on Linux with pytest, Go and Rust installed. The point
+of the last one is version drift: the fixtures hold output captured once or
+written by hand to the documented shape, so a change in how `pytest -q` or
+`cargo test` formats a failure would otherwise reach users unnoticed.
 
-Every module is self-contained: a planner that returns a rewrite or nothing, a
-compressor that returns its input unchanged when it does not recognize the
-format, and its own default caps. The hook module owns only the planner chain
-and the shared guards.
+Each `hooks/*.ts` module owns its planner, its compressor, and its default caps;
+`register.ts` owns only the planner chain, the platform gate, and the fail-open
+boundary.
 
 ```
 .claude-plugin/   plugin.json + marketplace.json
@@ -233,7 +239,7 @@ hooks/
   hooks.json      names the module
   register.ts     the tool.call hook: planner chain, wiring, guards, fail-open
   plan.ts         git status/diff + grep: command -> rewrite planner
-  ansi.ts         the one escape-sequence definition: stripAnsi + parse-then-retry
+  ansi.ts         the single escape-sequence definition: strip and retry
   compress.ts     git status/diff + grep: output compressors
   gitshow.ts      git show: planner + header compaction, diff body via compress.ts
   gitlog.ts       git log: planner + one-line-per-commit compaction

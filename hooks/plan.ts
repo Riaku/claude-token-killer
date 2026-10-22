@@ -5,9 +5,10 @@
 // Rewritten only when ALL of:
 //   - the command is a single simple invocation (no pipes, &&, ;, redirects,
 //     command substitution, backgrounding, unbalanced quotes)
-//   - it is one of the three PoC shapes: `git status`, `git diff`, `grep -r`
+//   - it is one of this planner's shapes: `git status`, `git diff`, or
+//     recursive `grep` (git show and git log have their own planners)
 //   - it carries no flag that would make our compressor wrong (-z, --json,
-//     --stat, --count, --name-only, ...)
+//     --stat, --count, --name-only, -o json)
 
 export type PlanKind = 'git-status' | 'git-diff' | 'grep'
 
