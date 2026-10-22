@@ -11,7 +11,6 @@ test('docker ps plans a table trim, including -a and container ls', () => {
     const p = planDocker(cmd)
     expect(p).not.toBeNull()
     expect(p!.kind).toBe('docker-ps')
-    // Compression-only: the command is never rewritten.
     expect(p!.command).toBe(cmd)
   }
 })

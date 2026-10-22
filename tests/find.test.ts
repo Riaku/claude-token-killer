@@ -20,7 +20,6 @@ test('find with a starting path plans a find trim', () => {
     const p = planFind(cmd)
     expect(p).not.toBeNull()
     expect(p!.kind).toBe('find')
-    // Compression-only: the command is never rewritten.
     expect(p!.command).toBe(cmd)
   }
 })

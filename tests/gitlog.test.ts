@@ -14,8 +14,6 @@ test('git log plans kind git-log and never rewrites the command', () => {
 })
 
 test('flags, counts, ranges and pathspecs still plan - and stay verbatim', () => {
-  // Compression-only: the returned command is always the caller's own string,
-  // so the Bash handler sees `plan.command === command` and runs it as written.
   for (const cmd of [
     'git log',
     'git log -5',
