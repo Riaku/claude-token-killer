@@ -8,13 +8,19 @@ This is the Claude-native take on [rtk](https://github.com/rtk-ai/rtk) and
 [PTK](https://github.com/Riaku/ptk) — same idea, executed inside Claude Code
 instead of in a wrapper around it.
 
-The mod works at two points in a tool call:
+You get two kinds of saving, at two points in a tool call:
 
 - **Before the call runs**, four commands are rewritten into forms whose output
   is cheaper to produce and to parse.
 - **After it runs**, the output of the commands in [What it saves](#what-it-saves)
   is compacted: repository state and search results, cluster tables, CI logs,
   and test runs.
+
+Both stages offer a way back: an elision line names the command to re-run
+tagged `# tk:raw`, and that command prints every line, untrimmed. For the four
+commands the mod rewrites, you get the compact form rather than the original
+pretty-printed one; for everything else, you get the same output you would have
+seen, whole.
 
 ## Install
 
@@ -210,6 +216,21 @@ claude plugin configure token-killer
 | `maxLineLen` | 200 | truncate longer match lines |
 | `maxDirEntries` | 200 | entries listed before elision; `ls` and `find` spend one budget across all directories, `Get-ChildItem` applies it per directory |
 | `notify` | `true` | show a toast with bytes saved when at least 200 bytes were saved |
+
+The eight options above are the ones worth setting: seven of them decide how
+much of a common command's output you see, and `notify` controls the toast. The
+hook fixes every other limit:
+
+- the commit count in `git log`, and the head, total and tail splits in pod logs
+- the failure counts in pytest, vitest and playwright, and the warning count in
+  pytest
+- the row count of a table, host rows for `ps`, `df`, `free`, `docker images` and
+  `kubectl top`, and the length of a `gh` list
+- where npm, cargo and go output is cut
+
+The hook sets each so that ordinary output for that command passes through
+whole. When output is not ordinary, the elision line names the command that
+re-runs it.
 
 ## Develop
 

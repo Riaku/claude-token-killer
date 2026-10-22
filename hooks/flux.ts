@@ -40,7 +40,7 @@ export function planFluxGet(command: string): FluxPlan | null {
 export function compressFluxGet(
   text: string,
   caps: Partial<TableCaps> = DEFAULT_TABLE_CAPS,
-  rerun: string = 'flux get kustomizations -A',
+  command: string = 'flux get kustomizations -A',
 ): string {
-  return compressTable(text, caps, rerun)
+  return compressTable(text, caps, command)
 }

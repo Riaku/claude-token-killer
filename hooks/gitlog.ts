@@ -26,11 +26,9 @@ export type LogPlan = { kind: 'git-log'; command: string }
 export type LogCaps = {
   /** commits kept before one elision line. */
   maxEntries: number
-  /** command the elision line names for the full output; defaults to `git log`. */
-  rerun?: string
 }
 
-export const DEFAULT_LOG_CAPS: Required<LogCaps> = { maxEntries: 50, rerun: 'git log' }
+export const DEFAULT_LOG_CAPS: LogCaps = { maxEntries: 50 }
 
 // Structural or user-chosen output shapes: compacting them would need a
 // different parser, so not even the compression half should be attempted.
@@ -123,7 +121,7 @@ type LogEntry = { sha: string; author: string; date: string; subject: string; bo
  * format (--oneline, --stat, -p, an aliased pretty format, a pager banner) or
  * when the result would not be shorter.
  */
-export function compressGitLog(raw: string, caps: LogCaps = DEFAULT_LOG_CAPS): string {
+export function compressGitLog(raw: string, caps: LogCaps = DEFAULT_LOG_CAPS, command = 'git log'): string {
   const text = stripAnsi(raw)
   const lines = text.split('\n')
   const entries: LogEntry[] = []
@@ -180,8 +178,7 @@ export function compressGitLog(raw: string, caps: LogCaps = DEFAULT_LOG_CAPS): s
   })
   const hidden = entries.length - shown.length
   if (hidden > 0) {
-    const rerun = caps.rerun ?? DEFAULT_LOG_CAPS.rerun
-    out.push(`... +${hidden} more commit${hidden === 1 ? '' : 's'} elided - raw: ${rerun} # tk:raw`)
+    out.push(`... +${hidden} more commit${hidden === 1 ? '' : 's'} elided - raw: ${command} # tk:raw`)
   }
 
   const result = out.join('\n')

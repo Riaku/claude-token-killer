@@ -234,7 +234,7 @@ function compressGitDiffInner(text: string, caps: Caps = DEFAULT_CAPS, command?:
       const shown = kept.slice(0, caps.maxDiffLinesPerFile)
       const hidden = kept.length - shown.length
       out.push(...shown)
-      out.push(`... +${hidden} lines elided - raw: git diff -- ${f.path} # tk:raw`)
+      out.push(`... +${hidden} lines elided - raw: ${command ?? 'git diff'} -- ${f.path} # tk:raw`)
       budget -= shown.length + 1
     } else {
       out.push(...kept)

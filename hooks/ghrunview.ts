@@ -91,7 +91,7 @@ type Entry = { job: string; step: string; msg: string }
 export function compressGhRunView(
   text: string,
   caps: GhRunViewCaps = DEFAULT_GH_RUN_VIEW_CAPS,
-  rerun: string = 'gh run view',
+  command: string = 'gh run view',
 ): string {
   const clean = stripAnsi(text)
   const lines = clean.split(/\r\n|\r|\n/)
@@ -152,11 +152,11 @@ export function compressGhRunView(
     const protectedRuns = rest.filter((r) => PROTECTED.test(r.text)).slice(0, Math.max(0, caps.maxProtected))
     const hidden = rest.reduce((n, r) => n + r.count, 0) - protectedRuns.reduce((n, r) => n + r.count, 0)
     for (const r of protectedRuns) out.push(render(r))
-    out.push(`... +${hidden} lines elided - raw: ${rerun} # tk:raw`)
+    out.push(`... +${hidden} lines elided - raw: ${command} # tk:raw`)
   }
 
   if (groups.length > shownGroups.length) {
-    out.push('', `... +${groups.length - shownGroups.length} steps elided - raw: ${rerun} # tk:raw`)
+    out.push('', `... +${groups.length - shownGroups.length} steps elided - raw: ${command} # tk:raw`)
   }
 
   const result = out.join('\n')

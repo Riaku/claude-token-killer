@@ -23,7 +23,7 @@ import { compressGhRunView, planGhRunView } from './ghrunview.ts'
 import { planGitGrep, planRg } from './grepalias.ts'
 import { planKubectlExec } from './kubectlexec.ts'
 import { compressRows, planRows } from './sysinfo.ts'
-import { compressGitLog, DEFAULT_LOG_CAPS, planGitLog } from './gitlog.ts'
+import { compressGitLog, planGitLog } from './gitlog.ts'
 import { compressGitShow, planGitShow } from './gitshow.ts'
 import { compressGoBuild, planGoBuild } from './gobuild.ts'
 import { compressGoTest, planGoTest } from './gotest.ts'
@@ -125,13 +125,16 @@ function planAny(command: string): Plan | null {
   return null
 }
 
-// The `command` is handed to compressors that quote a re-run hint (`# tk:raw`)
-// so the elision line names the command the model actually ran.
+// Every compressor is `(text, caps, command)`: the second argument is the
+// family's own caps object, or `undefined` for the family defaults - never a
+// bare number, never a re-run string buried in it - and the third is the command
+// that ran, so an elision line can name the command to re-run tagged `# tk:raw`.
+// `go-build` is the one exception: it elides nothing, so it takes text alone.
 const COMPRESSORS: Record<string, (text: string, caps: Caps, command: string) => string> = {
   'git-status': (t, c, cmd) => compressGitStatus(t, c, cmd),
   'git-diff': (t, c, cmd) => compressGitDiff(t, c, cmd),
-  'git-show': (t) => compressGitShow(t),
-  'git-log': (t, _c, cmd) => compressGitLog(t, { ...DEFAULT_LOG_CAPS, rerun: cmd }),
+  'git-show': (t, _c, cmd) => compressGitShow(t, undefined, cmd),
+  'git-log': (t, _c, cmd) => compressGitLog(t, undefined, cmd),
   grep: (t, c, cmd) => compressGrep(t, c, cmd),
   ls: (t, c, cmd) => compressLs(t, { maxEntries: c.maxDirEntries }, cmd),
   find: (t, c, cmd) => compressFind(t, { maxEntries: c.maxDirEntries }, cmd),
@@ -215,7 +218,7 @@ export const register: Register = (on, options) => {
 
     const r = await next(e)
 
-    return finish($, r, 'ps-dir', notify, (text) => compressPsDir(text, caps.maxDirEntries, plan.command)) ?? r
+    return finish($, r, 'ps-dir', notify, (text) => compressPsDir(text, { maxEntries: caps.maxDirEntries }, plan.command)) ?? r
   })
     .catch((_, e, next) => next(e))
 }
