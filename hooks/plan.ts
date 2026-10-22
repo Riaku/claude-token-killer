@@ -21,6 +21,29 @@ export type Plan = {
 // `$( )`, `${ }`, backticks and everything that chains or redirects is not.
 const UNSAFE = /[|;&<>]|\$\(|\$\{|`|\r|\n|#/
 
+/**
+ * Split a trailing `2>&1` off a command.
+ *
+ * Only the final position is handled. There `2>&1` means "merge this command's
+ * stderr into its stdout", which is exactly the stream we compress. Anywhere
+ * else it changes what a pipe or a later command receives, so those commands
+ * keep bailing on UNSAFE.
+ *
+ * The redirect is stripped before planning because the tokenizer would treat
+ * `>` as an operator and the rebuild would re-quote `2>&1` as a literal
+ * argument - silently changing what the command does.
+ */
+export function splitStderrMerge(raw: string): { body: string; merged: boolean } {
+  const m = /^([\s\S]*?)\s+2>&1\s*$/.exec(raw)
+  if (!m) return { body: raw, merged: false }
+  return { body: m[1], merged: true }
+}
+
+/** Put a split-off `2>&1` back, last and verbatim, after any added flags. */
+export function withStderrMerge(command: string, merged: boolean): string {
+  return merged ? `${command} 2>&1` : command
+}
+
 function basename(token: string): string {
   return token.slice(token.lastIndexOf('/') + 1)
 }
