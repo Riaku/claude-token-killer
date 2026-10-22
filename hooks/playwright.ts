@@ -11,18 +11,12 @@
 
 import { tokenize } from './plan.ts'
 import { stripAnsi } from './ansi.ts'
+import { UNSAFE, basename } from './shell.ts'
 
 export type PlaywrightPlan = { kind: 'playwright'; command: string }
 
-const UNSAFE = /[|;&<>]|\$\(|\$\{|`|\r|\n|#/
-
-
 /** Runners that can prefix `playwright test`. */
 const RUNNERS = new Set(['npx', 'pnpm', 'yarn', 'bun', 'bunx'])
-
-function basename(token: string): string {
-  return token.slice(token.lastIndexOf('/') + 1)
-}
 
 /**
  * Plan a Playwright run: `playwright test`, `npx playwright test`,

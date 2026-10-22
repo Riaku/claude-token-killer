@@ -8,14 +8,9 @@
 
 import { compressTable, DEFAULT_TABLE_CAPS, type TableCaps } from './tables.ts'
 import { tokenize } from './plan.ts'
+import { UNSAFE, basename } from './shell.ts'
 
 export type FluxPlan = { kind: 'flux-get'; command: string }
-
-const UNSAFE = /[|;&<>]|\$\(|\$\{|`|\r|\n|#/
-
-function basename(token: string): string {
-  return token.slice(token.lastIndexOf('/') + 1)
-}
 
 /**
  * Plan a `flux get <kind>` call. Compression-only.

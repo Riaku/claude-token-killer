@@ -17,6 +17,7 @@
 import { DEFAULT_CAPS, compressGitDiff } from './compress.ts'
 import { tokenize } from './plan.ts'
 import { stripAnsi } from './ansi.ts'
+import { UNSAFE, basename, sq } from './shell.ts'
 
 export type ShowPlan = { kind: 'git-show'; command: string }
 
@@ -33,10 +34,6 @@ export const DEFAULT_SHOW_CAPS: ShowCaps = {
   maxDiffLinesPerFile: DEFAULT_CAPS.maxDiffLinesPerFile,
   maxDiffTotalLines: DEFAULT_CAPS.maxDiffTotalLines,
 }
-
-// Same bail set as plan.ts: pipes, chains, redirects, command substitution,
-// `${}`, backticks, newlines, comments. `$VAR` alone stays allowed.
-const UNSAFE = /[|;&<>]|\$\(|\$\{|`|\r|\n|#/
 
 // Flags whose output is not the standard header+patch shape. Compressing any
 // of them would mean guessing at a different grammar, so they pass through.
@@ -68,23 +65,10 @@ const BAIL_FLAGS = new Set([
   '--no-index',
 ])
 
-// `basename` / `sq` are local copies: plan.ts does not export them, and
-// rewriting another module's surface is the integrator's call, not ours.
-function basename(token: string): string {
-  return token.slice(token.lastIndexOf('/') + 1)
-}
-
-/** Shell-quote a token only when it is not already shell-safe. */
-function sq(token: string): string {
-  if (/^[A-Za-z0-9_@%+=:,.\/-]+$/.test(token)) return token
-  return "'" + token.replace(/'/g, `'\\''`) + "'"
-}
-
 /** Split a flag token into its name, dropping any `=value` part. */
 function flagName(token: string): string {
   return token.startsWith('-') ? token.split('=')[0] : token
 }
-
 
 const MONTHS: Record<string, string> = {
   Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06',

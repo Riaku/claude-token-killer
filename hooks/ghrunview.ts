@@ -23,11 +23,9 @@
 
 import { tokenize } from './plan.ts'
 import { stripAnsi } from './ansi.ts'
+import { UNSAFE } from './shell.ts'
 
 export type GhRunViewPlan = { kind: 'gh-run-view'; command: string }
-
-// Same bail set as the other planners: one command, no shell composition.
-const UNSAFE = /[|;&<>]|\$\(|\$\{|`|\r|\n|#/
 
 // --json/--template/--jq produce a machine format, --web opens a browser,
 // --comments pulls in the PR body of a run, -h/--help prints usage.
@@ -50,9 +48,9 @@ export function planGhRunView(command: string): GhRunViewPlan | null {
   for (const t of tokens.slice(3)) {
     if (!t.startsWith('-')) continue
     if (BAIL_FLAGS.has(t.split('=')[0])) return null
-    // A page size does not change the shape; an unknown flag might.
-    if (/^--(?:log|log-failed|attempt|job|verbose)$/.test(t.split('=')[0])) continue
-    if (/^--(?:log|log-failed|attempt|job|verbose)=/.test(t)) continue
+    // These flags do not change the shape, with or without a value; an unknown
+    // flag might.
+    if (/^--(?:log|log-failed|attempt|job|verbose)(?:=|$)/.test(t)) continue
     return null
   }
   return { kind: 'gh-run-view', command: raw }

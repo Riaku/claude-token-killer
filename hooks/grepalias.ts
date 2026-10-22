@@ -11,11 +11,9 @@
 // and count modes print something else entirely, so they bail.
 
 import { tokenize } from './plan.ts'
+import { UNSAFE } from './shell.ts'
 
 export type GrepAliasPlan = { kind: 'grep'; command: string }
-
-// Same bail set as the other planners: one command, no shell composition.
-const UNSAFE = /[|;&<>]|\$\(|\$\{|`|\r|\n|#/
 
 /** Modes whose output is not one `file:line:text` entry per match. */
 const BAIL_FLAGS = new Set([

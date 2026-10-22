@@ -18,12 +18,9 @@
 
 import { tokenize } from './plan.ts'
 import { stripAnsi } from './ansi.ts'
+import { UNSAFE, basename } from './shell.ts'
 
 export type PytestPlan = { kind: 'pytest'; command: string }
-
-// Same bail set as the Bash planner: pipes, separators, redirections,
-// command substitution, backticks, newlines, comments.
-const UNSAFE = /[|;&<>]|\$\(|\$\{|`|\r|\n|#/
 
 export type PytestCaps = {
   /** kept failure/error detail blocks before the rest are elided. */
@@ -42,10 +39,6 @@ export const DEFAULT_PYTEST_CAPS: PytestCaps = {
 
 /** Re-run command quoted in elision markers; the planner hands it to us. */
 export const PYTEST_RERUN = 'pytest'
-
-function basename(token: string): string {
-  return token.slice(token.lastIndexOf('/') + 1)
-}
 
 // Short flags that swallow the rest of the bundle as their value: everything
 // after one of these is an argument, not another flag (`-rs` is `-r s`, not

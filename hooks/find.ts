@@ -16,6 +16,7 @@
 
 import { tokenize } from './plan.ts'
 import { stripAnsi } from './ansi.ts'
+import { UNSAFE } from './shell.ts'
 
 export type FindPlan = { kind: 'find'; command: string }
 
@@ -25,9 +26,6 @@ export const DEFAULT_FIND_CAPS = {
 }
 
 export type FindCaps = typeof DEFAULT_FIND_CAPS
-
-// Same bail set as the Bash planner.
-const UNSAFE = /[|;&<>]|\$\(|\$\{|`|\r|\n|#/
 
 // Predicates with side effects. Even though this module never rewrites the
 // command, a bail keeps us out of the way of anything state-changing: the
@@ -75,7 +73,6 @@ export function planFind(command: string): FindPlan | null {
   return { kind: 'find', command }
 }
 
-
 /**
  * True when every line looks like one path from `find`'s default action.
  * `find -ls`, `find -printf`, warnings and anything column-aligned fail here,
@@ -122,6 +119,8 @@ export function compressFind(raw: string, caps: FindCaps = DEFAULT_FIND_CAPS, co
   }
   // One flat file in one directory is not compressible - do not emit a
   // header for a single line.
+  // One path in one directory: the grouped form adds a header and a count for
+  // no saving, so keep the raw output.
   if (groups.size === 1 && paths.length === 1) return raw
 
   const hint = command ? `${command} # tk:raw` : 're-run with # tk:raw'

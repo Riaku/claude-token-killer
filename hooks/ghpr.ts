@@ -16,11 +16,9 @@
 
 import { tokenize } from './plan.ts'
 import { stripAnsi } from './ansi.ts'
+import { UNSAFE } from './shell.ts'
 
 export type GhPrPlan = { kind: 'gh-pr-checks' | 'gh-pr-view'; command: string }
-
-// Same bail set as the other planners: one command, no shell composition.
-const UNSAFE = /[|;&<>]|\$\(|\$\{|`|\r|\n|#/
 
 // --json/--template/--jq produce a machine format; --web opens a browser.
 const BAIL_FLAGS = new Set(['--json', '--web', '--help', '-h', '--template', '--jq'])

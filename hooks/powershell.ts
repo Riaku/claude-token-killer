@@ -12,11 +12,8 @@
 // PowerShell too), so the tagged re-run reaches the shell untouched.
 
 import { stripAnsi } from './ansi.ts'
+import { UNSAFE } from './shell.ts'
 export type PsPlan = { kind: 'ps-dir'; command: string }
-
-// Same bail set as the Bash planner: pipes, statement separators,
-// redirections, subexpressions, backticks, newlines, comments.
-const PS_UNSAFE = /[|;&<>]|\$\(|\$\{|`|\r|\n|#/
 
 // Get-ChildItem and its built-in aliases. In PowerShell `ls` and `dir` ARE
 // Get-ChildItem, so the same table comes back and the same trim applies.
@@ -25,12 +22,11 @@ const GCI_ALIASES = new Set(['get-childitem', 'gci', 'ls', 'dir'])
 export function planPowerShell(command: string): PsPlan | null {
   const cmd = command.trim()
   if (!cmd) return null
-  if (PS_UNSAFE.test(cmd)) return null
+  if (UNSAFE.test(cmd)) return null
   const first = cmd.split(/\s+/)[0].toLowerCase()
   if (!GCI_ALIASES.has(first)) return null
   return { kind: 'ps-dir', command: cmd }
 }
-
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`

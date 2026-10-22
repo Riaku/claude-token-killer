@@ -19,6 +19,7 @@
 
 import { tokenize } from './plan.ts'
 import { stripAnsi } from './ansi.ts'
+import { UNSAFE, basename } from './shell.ts'
 
 export type LogPlan = { kind: 'git-log'; command: string }
 
@@ -31,10 +32,6 @@ export type LogCaps = {
 
 export const DEFAULT_LOG_CAPS: Required<LogCaps> = { maxEntries: 50, rerun: 'git log' }
 
-// Same bail set as plan.ts: pipes, chains, redirects, command substitution,
-// `${}`, backticks, newlines, comments. `$VAR` alone stays allowed.
-const UNSAFE = /[|;&<>]|\$\(|\$\{|\x60|\r|\n|#/
-
 // Structural or user-chosen output shapes: compacting them would need a
 // different parser, so not even the compression half should be attempted.
 const BAIL_FLAGS = new Set([
@@ -45,11 +42,6 @@ const BAIL_FLAGS = new Set([
   '--format',
   '--graph',
 ])
-
-function basename(token: string): string {
-  return token.slice(token.lastIndexOf('/') + 1)
-}
-
 
 const MONTHS: Record<string, string> = {
   Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06',

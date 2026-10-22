@@ -14,6 +14,7 @@
 
 import { tokenize } from './plan.ts'
 import { stripAnsi } from './ansi.ts'
+import { UNSAFE, sq } from './shell.ts'
 
 export type CargoTestPlan = { kind: 'cargo-test'; command: string }
 
@@ -26,10 +27,6 @@ export type CargoTestCaps = {
 }
 
 export const CARGO_TEST_DEFAULTS = { maxFailures: 10, maxLinesPerFailure: 30 }
-
-// Same bail set as the Bash planner: pipes, statement separators,
-// redirections, substitution, backticks, newlines, comments.
-const UNSAFE = /[|;&<>]|\$\(|\$\{|`|\r|\n|#/
 
 // Flags that change the output into something this compressor would mangle,
 // or that mean the user explicitly asked for the untrimmed firehose.
@@ -47,12 +44,6 @@ const BAIL_FLAGS = new Set([
 
 function base(token: string): string {
   return token.slice(token.lastIndexOf('/') + 1)
-}
-
-/** Shell-quote a token only when it is not already shell-safe. */
-function sq(token: string): string {
-  if (/^[A-Za-z0-9_@%+=:,.\\/-]+$/.test(token)) return token
-  return "'" + token.replace(/'/g, `'\\''`) + "'"
 }
 
 /**
@@ -82,7 +73,6 @@ export function planCargoTest(command: string): CargoTestPlan | null {
   }
   return { kind: 'cargo-test', command }
 }
-
 
 // Build progress: pure noise once the run is over. Kept deliberately narrow -
 // anything not in this list (Doc-tests, Running, error:) passes through.
