@@ -210,7 +210,19 @@ npm install
 npm run typecheck    # tsc --noEmit against the vendored types
 npm run validate     # claude plugin validate .
 npm test             # claude plugin test .
+npm run test:live    # real pytest, go, cargo, git output through the compressors
 ```
+
+`test:live` needs the tools it exercises and skips the ones that are missing,
+so it is safe to run anywhere: it prints `ok`, `SKIP` or `FAIL` per family and
+exits non-zero on a failure. `test:live:windows` does the same for
+`Get-ChildItem` against the real `pwsh`.
+
+CI runs the unit suite on Linux, macOS and Windows, the PowerShell check on
+Windows, and `test:live` on Linux with pytest, Go and Rust installed. The
+point of the last one is version drift: the fixtures replay output recorded
+once, so a change in how `pytest -q` or `cargo test` formats a failure would
+otherwise reach users unnoticed.
 
 Every module is self-contained: a planner that returns a rewrite or nothing, a
 compressor that returns its input unchanged when it does not recognize the

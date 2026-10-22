@@ -45,7 +45,13 @@ describe('compressGhPrChecks', () => {
   test('caps a long check list with a recovery hint', () => {
     const many = Array.from({ length: 60 }, (_, i) => `check-${i}\tpass\t1s\thttps://github.com/o/r/actions/runs/1/job/${i}\t`).join('\n')
     const out = compressGhPrChecks(many, { maxItems: 10 })
-    expect(out).toContain('... +50 checks elided - raw: gh pr checks -v # tk:raw')
+    expect(out).toContain('... +50 checks elided - raw: gh pr checks # tk:raw')
+  })
+
+  test('the hint quotes the command that ran', () => {
+    const many = Array.from({ length: 30 }, (_, i) => `check-${i}\tpass\t1s\thttps://x/${i}\t`).join('\n')
+    const out = compressGhPrChecks(many, { maxItems: 5 }, 'gh pr checks 4 --watch')
+    expect(out).toContain('raw: gh pr checks 4 --watch # tk:raw')
     expect(out.length).toBeLessThan(many.length)
   })
 })
@@ -60,8 +66,13 @@ describe('compressGhPrView', () => {
     expect(out).toContain('state:\tOPEN')
     expect(out).toContain('body line 4')
     expect(out).not.toContain('body line 39')
-    expect(out).toContain('body lines elided - raw: gh pr view --comments # tk:raw')
+    expect(out).toContain('body lines elided - raw: gh pr view # tk:raw')
     expect(out.length).toBeLessThan(VIEW.length)
+  })
+
+  test('the body hint quotes the command that ran', () => {
+    const out = compressGhPrView(VIEW, { maxBody: 2 }, 'gh pr view 4')
+    expect(out).toContain('raw: gh pr view 4 # tk:raw')
   })
 
   test('never inflates a short body', () => {
