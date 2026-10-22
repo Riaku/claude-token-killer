@@ -111,8 +111,10 @@ const COMPRESSORS: Record<string, (text: string, caps: Caps, command: string) =>
   vitest: (t, _c, cmd) => compressVitest(t, undefined, cmd),
   playwright: (t, _c, cmd) => compressPlaywright(t, undefined, cmd),
   'npm-install': (t, _c, cmd) => compressNpmInstall(t, undefined, cmd),
-  'cargo-test': (t) => compressCargoTest(t),
-  'go-test': (t) => compressGoTest(t),
+  // Both take the executed command so the elision hint re-runs the same
+  // package selection instead of a generic `go test -v`.
+  'cargo-test': (t, _c, cmd) => compressCargoTest(t, undefined, cmd),
+  'go-test': (t, _c, cmd) => compressGoTest(t, undefined, cmd),
   'go-build': (t, _c, cmd) => compressGoBuild(t, undefined, cmd),
   gh: (t) => compressGh(t),
 }
@@ -225,7 +227,7 @@ export const register: Register = (on, options) => {
       typeof res === 'string' ? res : res && typeof res.stdout === 'string' ? res.stdout : null
     if (original === null || original === '') return r
 
-    const compressed = compressPsDir(original, caps.maxDirEntries)
+    const compressed = compressPsDir(original, caps.maxDirEntries, plan.command)
     if (compressed === original || compressed.length >= original.length) return r
 
     const saved = original.length - compressed.length

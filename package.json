@@ -2,7 +2,7 @@
   "name": "claude-token-killer",
   "version": "0.1.0",
   "private": true,
-  "description": "Claude Code mod: rewrites git status / git diff / grep into token-compact forms on the fly. Linux PoC.",
+  "description": "Claude Code mod: rewrites git status, git diff, git show and recursive grep into token-compact forms, and compresses the output of 23 command families in-process.",
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "claude plugin test .",

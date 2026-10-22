@@ -93,7 +93,11 @@ const PKG_RESULT = /^(ok|FAIL|\?)(\s+)(\S+)(.*)$/
  * Returns the input unchanged when it does not look like go test output, and
  * never returns something longer than the input.
  */
-export function compressGoTest(text: string, caps: GoTestCaps = {}): string {
+export function compressGoTest(
+  text: string,
+  caps: GoTestCaps = {},
+  rerun: string = 'go test -v',
+): string {
   const maxFailures = caps.maxFailures ?? GO_TEST_DEFAULTS.maxFailures
   const maxLines = caps.maxLinesPerFailure ?? GO_TEST_DEFAULTS.maxLinesPerFailure
 
@@ -135,6 +139,8 @@ export function compressGoTest(text: string, caps: GoTestCaps = {}): string {
       if (body.length > maxLines) {
         out.push(...body.slice(0, maxLines))
         out.push(
+          // Narrower than ${rerun} on purpose: one test, verbose, so the
+          // traceback comes back whole instead of re-running the suite.
           `... +${body.length - maxLines} lines elided - raw: go test -run '^${runPattern(open[1])}$' -v # tk:raw`,
         )
       } else {
@@ -163,10 +169,10 @@ export function compressGoTest(text: string, caps: GoTestCaps = {}): string {
   }
 
   if (passingElided > 0) {
-    out.push(`... +${passingElided} passing test${passingElided === 1 ? '' : 's'} elided - raw: go test -v # tk:raw`)
+    out.push(`... +${passingElided} passing test${passingElided === 1 ? '' : 's'} elided - raw: ${rerun} # tk:raw`)
   }
   if (blocksElided > 0) {
-    out.push(`... +${blocksElided} more failing test${blocksElided === 1 ? '' : 's'} elided - raw: go test # tk:raw`)
+    out.push(`... +${blocksElided} more failing test${blocksElided === 1 ? '' : 's'} elided - raw: ${rerun} # tk:raw`)
   }
   if (lifecycleDropped > 0 && out.length === 0) {
     out.push('go test: passed, no package results printed')

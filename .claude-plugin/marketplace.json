@@ -6,7 +6,7 @@
     {
       "name": "token-killer",
       "source": "./",
-      "description": "Rewrites git status, git diff and recursive grep on the fly into token-compact forms, inside Claude Code. No external binary. Linux PoC."
+      "description": "Rewrites git status, git diff, git show and recursive grep on the fly, and compresses 23 command families, inside Claude Code. No external binary, no process spawns."
     }
   ]
 }

@@ -61,7 +61,7 @@ const MODE = /^[dlarwxLAHs@-]{4,10}$/
  */
 type PsRow = { name: string; dir: boolean; size: number | null }
 
-export function compressPsDir(raw: string, maxEntries: number): string {
+export function compressPsDir(raw: string, maxEntries: number, command: string = ''): string {
   const clean = stripAnsi(raw)
   const sections: Array<{ dir: string | null; rows: PsRow[] }> = []
   let cur: { dir: string | null; rows: PsRow[] } = { dir: null, rows: [] }
@@ -126,7 +126,8 @@ export function compressPsDir(raw: string, maxEntries: number): string {
     const shown = s.rows.slice(0, maxEntries).map((r) => `  ${render(r)}`)
     out.push(header, ...shown)
     if (s.rows.length > maxEntries) {
-      out.push(`  ... +${s.rows.length - maxEntries} more (raw: re-run with # tk:raw)`)
+      const hint = command ? ` - raw: ${command} # tk:raw` : ' - raw: re-run with # tk:raw'
+      out.push(`  ... +${s.rows.length - maxEntries} more${hint}`)
     }
   }
   return out.join('\n')

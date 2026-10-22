@@ -196,12 +196,14 @@ test('failing tests past maxFailures are summarized', () => {
     { length: 25 },
     (_, i) => `--- FAIL: TestF${i} (0.00s)\n    f_test.go:1: bad ${i}`,
   ).join('\n')
-  const out = compressGoTest(body + '\nFAIL\texample.com/m\t0.9s')
+  const out = compressGoTest(body + '\nFAIL\texample.com/m\t0.9s', {}, 'go test ./... -count=1')
 
   expect(out).toContain('--- FAIL: TestF0 (0.00s)')
   expect(out).toContain('--- FAIL: TestF19 (0.00s)')
   expect(out).not.toContain('--- FAIL: TestF20')
-  expect(out).toContain('... +5 more failing tests elided - raw: go test # tk:raw')
+  // The hint has to name the command that ran, not a generic one: `go test -v`
+  // would run every package in the module, not the ones the caller picked.
+  expect(out).toContain('... +5 more failing tests elided - raw: go test ./... -count=1 # tk:raw')
 })
 
 test('the default caps are the documented ones', () => {
