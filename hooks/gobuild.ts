@@ -10,12 +10,12 @@
 // model asked for), as does `-json` (machine format).
 
 import { tokenize } from './plan.ts'
+import { stripAnsi } from './ansi.ts'
 
 export type GoBuildPlan = { kind: 'go-build'; command: string }
 
 const UNSAFE = /[|;&<>]|\$\(|\$\{|`|\r|\n|#/
 
-const ANSI = /\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b\[[0-9;?]*[A-Za-z]/g
 
 const SUBCOMMANDS = new Set(['build', 'vet'])
 
@@ -57,7 +57,7 @@ export function compressGoBuild(
   caps: GoBuildCaps = DEFAULT_GO_BUILD_CAPS,
   _rerun: string = 'go build ./...',
 ): string {
-  const lines = text.replace(ANSI, '').split(/\r\n|\r|\n/)
+  const lines = stripAnsi(text).split(/\r\n|\r|\n/)
   const out: string[] = []
   let last = ''
   let repeat = 0

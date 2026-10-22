@@ -13,6 +13,7 @@
 // shell), so the tagged re-run reaches the shell untouched.
 
 import { tokenize } from './plan.ts'
+import { stripAnsi } from './ansi.ts'
 
 export type LsPlan = { kind: 'ls'; command: string }
 
@@ -81,7 +82,6 @@ export function planLs(command: string): LsPlan | null {
   return { kind: 'ls', command }
 }
 
-const ANSI = /\x1b\[[0-9;?]*[A-Za-z]/g
 
 // Unix mode string: type char, nine permission chars, optional ACL marker.
 const MODE = /^[-dlbcps][rwxsStT-]{9}[.@+]?$/
@@ -145,7 +145,7 @@ type Section = { dir: string | null; entries: string[] }
  * read - a listing is only ever compressed whole.
  */
 export function compressLs(raw: string, caps: LsCaps = DEFAULT_LS_CAPS, command?: string): string {
-  const clean = raw.replace(ANSI, '')
+  const clean = stripAnsi(raw)
   const sections: Section[] = []
   let cur: Section = { dir: null, entries: [] }
 

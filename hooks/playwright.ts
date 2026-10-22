@@ -10,12 +10,12 @@
 // format out from under the parser.
 
 import { tokenize } from './plan.ts'
+import { stripAnsi } from './ansi.ts'
 
 export type PlaywrightPlan = { kind: 'playwright'; command: string }
 
 const UNSAFE = /[|;&<>]|\$\(|\$\{|`|\r|\n|#/
 
-const ANSI = /\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b\[[0-9;?]*[A-Za-z]/g
 
 /** Runners that can prefix `playwright test`. */
 const RUNNERS = new Set(['npx', 'pnpm', 'yarn', 'bun', 'bunx'])
@@ -92,7 +92,7 @@ export function compressPlaywright(
   caps: PlaywrightCaps = DEFAULT_PLAYWRIGHT_CAPS,
   rerun: string = 'npx playwright test',
 ): string {
-  const lines = text.replace(ANSI, '').split(/\r\n|\r|\n/)
+  const lines = stripAnsi(text).split(/\r\n|\r|\n/)
   const out: string[] = []
   const summary: string[] = []
   let failuresKept = 0

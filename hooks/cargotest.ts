@@ -13,6 +13,7 @@
 // re-run reaches the shell untouched.
 
 import { tokenize } from './plan.ts'
+import { stripAnsi } from './ansi.ts'
 
 export type CargoTestPlan = { kind: 'cargo-test'; command: string }
 
@@ -85,7 +86,6 @@ export function planCargoTest(command: string): CargoTestPlan | null {
   return { kind: 'cargo-test', command }
 }
 
-const ANSI = /\x1b\[[0-9;?]*[A-Za-z]/g
 
 // Build progress: pure noise once the run is over. Kept deliberately narrow -
 // anything not in this list (Doc-tests, Running, error:) passes through.
@@ -117,7 +117,7 @@ export function compressCargoTest(text: string, caps: CargoTestCaps = {}): strin
   const maxFailures = caps.maxFailures ?? CARGO_TEST_DEFAULTS.maxFailures
   const maxLines = caps.maxLinesPerFailure ?? CARGO_TEST_DEFAULTS.maxLinesPerFailure
 
-  const clean = text.replace(ANSI, '')
+  const clean = stripAnsi(text)
   const looksLikeCargoTest =
     /^test result: (ok|FAILED)\./m.test(clean) ||
     /^running \d+ tests?$/m.test(clean) ||
