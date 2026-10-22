@@ -69,7 +69,7 @@ const WINDOWS_TABLE = [
 ].join('\n')
 
 test('Linux pwsh table compresses to names with sizes, no user/group noise', () => {
-  const out = compressPsDir(LINUX_TABLE, 200)
+  const out = compressPsDir(LINUX_TABLE, { maxEntries: 200 })
   expect(out).toContain('psfix (4 entries):')
   expect(out).toContain('sub1/')
   expect(out).toContain('sub2/')
@@ -81,7 +81,7 @@ test('Linux pwsh table compresses to names with sizes, no user/group noise', () 
 })
 
 test('Windows table layout parses from the back too', () => {
-  const out = compressPsDir(WINDOWS_TABLE, 200)
+  const out = compressPsDir(WINDOWS_TABLE, { maxEntries: 200 })
   expect(out).toContain('node_modules/')
   expect(out).toContain('Cargo.toml (2.5K)')
   expect(out).toContain('big.dll (1.0M)')
@@ -94,7 +94,7 @@ test('ANSI color codes are stripped before parsing', () => {
     'a.txt',
     '\x1b[32;1ma.txt\x1b[0m',
   )
-  const out = compressPsDir(colored, 200)
+  const out = compressPsDir(colored, { maxEntries: 200 })
   expect(out).toContain('sub1/')
   expect(out).toContain('a.txt (6 B)')
   expect(out).not.toContain('\x1b[')
@@ -116,7 +116,7 @@ const WRAPPED_TABLE = [
 ].join('\n')
 
 test('names wrapped by the console width are glued back together', () => {
-  const out = compressPsDir(WRAPPED_TABLE, 200)
+  const out = compressPsDir(WRAPPED_TABLE, { maxEntries: 200 })
   expect(out).toContain('claude-token-killer/')
   expect(out).toContain('a-rather-long-file-name.md (2.8K)')
   expect(out).not.toContain('kil\n')
@@ -125,12 +125,12 @@ test('names wrapped by the console width are glued back together', () => {
 
 test('unrecognized output is returned unchanged', () => {
   const raw = 'Get-ChildItem : Cannot find path /nope\nAt line:1 char:1'
-  expect(compressPsDir(raw, 200)).toBe(raw)
+  expect(compressPsDir(raw, { maxEntries: 200 })).toBe(raw)
 })
 
 test('empty directory reports empty', () => {
   const raw = '    Directory: /empty\n'
-  const out = compressPsDir(raw, 200)
+  const out = compressPsDir(raw, { maxEntries: 200 })
   expect(out).toContain('(empty)')
 })
 
@@ -140,7 +140,7 @@ test('entry cap elides with the tk:raw recovery hint', () => {
     (_, i) => `-rw-r--r--     hermes hermes     10/21/2026 23:09            ${i} f${i}.txt`,
   )
   const raw = ['    Directory: /x', 'UnixMode User Group LastWriteTime Size Name', '---- ---- ---- ---- ---- ----', ...rows].join('\n')
-  const out = compressPsDir(raw, 2, 'Get-ChildItem /x')
+  const out = compressPsDir(raw, { maxEntries: 2 }, 'Get-ChildItem /x')
   expect(out).toContain('f0.txt')
   expect(out).toContain('f1.txt')
   expect(out).not.toContain('f4.txt')

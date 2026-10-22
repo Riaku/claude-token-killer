@@ -57,7 +57,12 @@ const MODE = /^[dlarwxLAHs@-]{4,10}$/
  */
 type PsRow = { name: string; dir: boolean; size: number | null }
 
-export function compressPsDir(raw: string, maxEntries: number, command: string = ''): string {
+/** Directory listing: entries listed per section before an elision line. */
+export type PsDirCaps = { maxEntries: number }
+
+export const DEFAULT_PS_DIR_CAPS: PsDirCaps = { maxEntries: 200 }
+
+export function compressPsDir(raw: string, caps: PsDirCaps = DEFAULT_PS_DIR_CAPS, command = ''): string {
   const clean = stripAnsi(raw)
   const sections: Array<{ dir: string | null; rows: PsRow[] }> = []
   let cur: { dir: string | null; rows: PsRow[] } = { dir: null, rows: [] }
@@ -119,11 +124,11 @@ export function compressPsDir(raw: string, maxEntries: number, command: string =
     }
     const render = (r: PsRow) =>
       r.dir ? `${r.name}/` : r.size === null ? r.name : `${r.name} (${formatSize(r.size)})`
-    const shown = s.rows.slice(0, maxEntries).map((r) => `  ${render(r)}`)
+    const shown = s.rows.slice(0, caps.maxEntries).map((r) => `  ${render(r)}`)
     out.push(header, ...shown)
-    if (s.rows.length > maxEntries) {
+    if (s.rows.length > caps.maxEntries) {
       const hint = command ? ` - raw: ${command} # tk:raw` : ' - raw: re-run with # tk:raw'
-      out.push(`  ... +${s.rows.length - maxEntries} more${hint}`)
+      out.push(`  ... +${s.rows.length - caps.maxEntries} more${hint}`)
     }
   }
   return out.join('\n')

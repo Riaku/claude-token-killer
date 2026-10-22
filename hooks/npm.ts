@@ -104,18 +104,18 @@ const SUMMARY = [
 
 const WARN_ERR = /^(?:npm (?:warn|error)|ERR!|warning\b|ERROR\b)/i
 
-function elision(hidden: number, rerun: string): string {
-  return `... +${hidden} warning/error line${hidden === 1 ? '' : 's'} elided - raw: ${rerun} # tk:raw`
+function elision(hidden: number, command: string): string {
+  return `... +${hidden} warning/error line${hidden === 1 ? '' : 's'} elided - raw: ${command} # tk:raw`
 }
 
 /**
  * Compress npm/pnpm/yarn install stdout: strip progress bars, spinners and
  * lifecycle/timing noise; keep summaries, WARN/ERR lines (capped) and
  * anything unrecognized. Text with no recognizable install shape is
- * returned unchanged. `rerun` only changes the command quoted in elision
+ * returned unchanged. `command` only changes the command quoted in elision
  * markers.
  */
-export function compressNpmInstall(text: string, caps: NpmCaps = DEFAULT_NPM_CAPS, rerun: string = NPM_RERUN): string {
+export function compressNpmInstall(text: string, caps: NpmCaps = DEFAULT_NPM_CAPS, command: string = NPM_RERUN): string {
   const clean = stripAnsi(text)
   const out: string[] = []
   let sawShape = false
@@ -154,7 +154,7 @@ export function compressNpmInstall(text: string, caps: NpmCaps = DEFAULT_NPM_CAP
   }
 
   if (!sawShape) return text
-  if (warnTotal > warnShown) out.push(elision(warnTotal - warnShown, rerun))
+  if (warnTotal > warnShown) out.push(elision(warnTotal - warnShown, command))
   if (out.length === 0) return text
   const compressed = out.join('\n')
   if (compressed.length >= text.length) return text

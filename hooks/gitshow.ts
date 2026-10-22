@@ -168,7 +168,7 @@ export function planGitShow(command: string): ShowPlan | null {
  * when the header does not parse, when more than one commit is present, or
  * when the result would not be shorter.
  */
-export function compressGitShow(raw: string, caps: ShowCaps = DEFAULT_SHOW_CAPS): string {
+export function compressGitShow(raw: string, caps: ShowCaps = DEFAULT_SHOW_CAPS, command = 'git show'): string {
   const text = stripAnsi(raw)
   const lines = text.split('\n')
   const first = lines[0] ?? ''
@@ -222,7 +222,7 @@ export function compressGitShow(raw: string, caps: ShowCaps = DEFAULT_SHOW_CAPS)
 
   // compressGitDiff ignores everything before the first `diff --git`, so give
   // it the body only - the header is already accounted for above.
-  const diff = compressGitDiff(body, { ...DEFAULT_CAPS, ...caps })
+  const diff = compressGitDiff(body, { ...DEFAULT_CAPS, ...caps }, command)
   const out = diff === body ? `${headerLine}\n\n${body}` : `${headerLine}\n${diff}`
   return out.length < raw.length ? out : raw
 }

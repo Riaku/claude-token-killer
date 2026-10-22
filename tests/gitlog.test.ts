@@ -271,7 +271,7 @@ test('--date=iso output parses to the same YYYY-MM-DD dates', () => {
 })
 
 test('the entry cap elides with a tk:raw re-run hint', () => {
-  const out = compressGitLog(LOG_ALL, { maxEntries: 2, rerun: 'git log' })
+  const out = compressGitLog(LOG_ALL, { maxEntries: 2 })
   expect(out.split('\n')).toEqual([
     '051aa82 Empty commit (Ada Lovelace, 2026-03-05) +1 line',
     'ed4f4b0 Add big.txt fixture (Ada Lovelace, 2026-03-04) +1 line',
@@ -281,7 +281,7 @@ test('the entry cap elides with a tk:raw re-run hint', () => {
 })
 
 test('the elision names the exact re-run the caller supplied', () => {
-  const out = compressGitLog(LOG_ALL, { maxEntries: 1, rerun: 'git log --author=Ada --oneline' })
+  const out = compressGitLog(LOG_ALL, { maxEntries: 1 }, 'git log --author=Ada --oneline')
   expect(out).toContain('... +4 more commits elided - raw: git log --author=Ada --oneline # tk:raw')
 })
 
@@ -292,7 +292,7 @@ test('caps can be passed without a re-run command: git log is the default', () =
 
 test('the default cap is 50 commits', () => {
   expect(DEFAULT_LOG_CAPS.maxEntries).toBe(50)
-  expect(DEFAULT_LOG_CAPS.rerun).toBe('git log')
+  expect(compressGitLog(LOG_ALL, { maxEntries: 1 })).toContain('raw: git log # tk:raw')
   // Five commits are under the cap: no elision line.
   expect(compressGitLog(LOG_ALL)).not.toContain('elided')
 })

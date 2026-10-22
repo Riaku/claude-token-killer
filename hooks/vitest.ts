@@ -78,8 +78,8 @@ export function planVitest(command: string): VitestPlan | null {
 type Block = { header: string; body: string[]; failure: boolean }
 type Seg = string | Block
 
-function elision(hidden: number, what: string, rerun: string): string {
-  return `... +${hidden} ${what}${hidden === 1 ? '' : 's'} elided - raw: ${rerun} # tk:raw`
+function elision(hidden: number, what: string, command: string): string {
+  return `... +${hidden} ${what}${hidden === 1 ? '' : 's'} elided - raw: ${command} # tk:raw`
 }
 
 /**
@@ -87,10 +87,10 @@ function elision(hidden: number, what: string, rerun: string): string {
  * blank decoration; keep per-file result lines, capped failure blocks,
  * captured stdout/stderr, and a one-line final summary.
  *
- * Text with no vitest shape is returned unchanged. `rerun` only changes the
+ * Text with no vitest shape is returned unchanged. `command` only changes the
  * command quoted in elision markers.
  */
-export function compressVitest(text: string, caps: VitestCaps = DEFAULT_VITEST_CAPS, rerun: string = VITEST_RERUN): string {
+export function compressVitest(text: string, caps: VitestCaps = DEFAULT_VITEST_CAPS, command: string = VITEST_RERUN): string {
   const lines = stripAnsi(text).split(/\r\n|\r|\n/)
 
   const segs: Seg[] = []
@@ -181,7 +181,7 @@ export function compressVitest(text: string, caps: VitestCaps = DEFAULT_VITEST_C
   }
   if (failureTotal > failureShown) {
     // The summary still names the counts, so nothing is lost blind.
-    kept.push(elision(failureTotal - failureShown, 'failure block', rerun))
+    kept.push(elision(failureTotal - failureShown, 'failure block', command))
   }
 
   for (const seg of kept) {
@@ -193,7 +193,7 @@ export function compressVitest(text: string, caps: VitestCaps = DEFAULT_VITEST_C
     const limit = Math.max(0, caps.maxLinesPerBlock)
     if (seg.body.length > limit) {
       out.push(...seg.body.slice(0, limit))
-      out.push(elision(seg.body.length - limit, 'line', rerun))
+      out.push(elision(seg.body.length - limit, 'line', command))
     } else {
       out.push(...seg.body)
     }

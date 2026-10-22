@@ -26,13 +26,9 @@
 // planners.
 
 import { tokenize } from './plan.ts'
-import { UNSAFE } from './shell.ts'
+import { UNSAFE, basename } from './shell.ts'
 
 export type RowsPlan = { kind: 'rows'; command: string }
-
-function base(token: string): string {
-  return token.slice(token.lastIndexOf('/') + 1)
-}
 
 type Shape = { columns: number }
 
@@ -44,7 +40,7 @@ type Shape = { columns: number }
  */
 function shapeOf(tokens: string[]): Shape | null {
   if (tokens.length < 2) return null
-  const prog = base(tokens[0])
+  const prog = basename(tokens[0])
 
   if (prog === 'ps') {
     // A custom output format changes the column set, whatever the mode says.
@@ -149,12 +145,12 @@ function squeezeLine(line: string, columns: number): string {
  * Returns the input unchanged when there is nothing to gain, and never
  * inflates.
  */
-export function compressRows(text: string, caps: RowsCaps = DEFAULT_ROWS_CAPS, rerun: string = ''): string {
+export function compressRows(text: string, caps: RowsCaps = DEFAULT_ROWS_CAPS, command: string = ''): string {
   const normalized = text.replace(/\r\n/g, '\n')
   const lines = normalized.split('\n')
   if (lines.length < 2) return text
 
-  const tokens = rerun ? tokenize(rerun) : null
+  const tokens = command ? tokenize(command) : null
   const shape = tokens ? shapeOf(tokens) : null
   const squeezed = shape ? lines.map((l) => squeezeLine(l, shape.columns)).join('\n') : normalized
   const working = squeezed.length < text.length ? squeezed : text
@@ -172,7 +168,7 @@ export function compressRows(text: string, caps: RowsCaps = DEFAULT_ROWS_CAPS, r
   const rescued = rest.filter((l) => PROTECTED.test(l)).slice(0, Math.max(0, caps.maxProtected))
   const hidden = rest.length - rescued.length
 
-  const hint = rerun ? ` - raw: ${rerun} # tk:raw` : ''
+  const hint = command ? ` - raw: ${command} # tk:raw` : ''
   const result = [header, ...head, ...rescued, `... +${hidden} rows elided${hint}`].join('\n')
   return result.length < text.length ? result : text
 }
