@@ -365,3 +365,57 @@ test('a look-alike command the planner does not model stays untouched', async ($
   expect(seen[0]).toBe('lsblk')
   expect(r.result.stdout).toBe(raw)
 })
+
+test('a trailing 2>&1 is preserved and the table still compresses', async ($, on) => {
+  const seen: string[] = []
+  const raw = [
+    'NAME                   READY   STATUS    RESTARTS   AGE',
+    'drop-7d9f8c6b5-abcde   1/1     Running   0          2d',
+    'drop-7d9f8c6b5-fghij   1/1     Running   0          2d',
+    '',
+  ].join('\n')
+  fakeBash(on, raw, seen)
+  await boot($)
+
+  const r = await call($, 'kubectl get pods -n apps -l app=drop 2>&1')
+  // The redirect reached the shell, last, exactly as written.
+  expect(seen[0]).toBe('kubectl get pods -n apps -l app=drop 2>&1')
+  expect(r.result.stdout).toContain('drop-7d9f8c6b5-abcde')
+  expect(r.result.stdout.length).toBeLessThan(raw.length)
+})
+
+test('a rewritten command keeps 2>&1 after the flags it adds', async ($, on) => {
+  const seen: string[] = []
+  fakeBash(on, '## main...origin/main\n M a.txt\n', seen)
+  await boot($)
+
+  await call($, 'git status 2>&1')
+  expect(seen[0]).toBe('git status --porcelain=v1 -b -uall 2>&1')
+})
+
+test('a mid-pipeline 2>&1 still passes straight through', async ($, on) => {
+  const seen: string[] = []
+  const cmd = 'kubectl get pods 2>&1 | head -3'
+  fakeBash(on, 'NAME READY\n', seen)
+  await boot($)
+
+  const r = await call($, cmd)
+  expect(seen[0]).toBe(cmd)
+  expect(r.result.stdout).toBe('NAME READY\n')
+})
+
+test('kubectl logs is planned, compressed, and never rewritten', async ($, on) => {
+  const seen: string[] = []
+  const lines = Array.from({ length: 40 }, () => 'GET /health 200 1ms')
+  lines.push('ERROR db refused')
+  const raw = lines.join('\n')
+  fakeBash(on, raw, seen)
+  await boot($)
+
+  const cmd = 'kubectl logs -n apps deployment/drop --tail=100'
+  const r = await call($, cmd)
+  expect(seen[0]).toBe(cmd)
+  expect(r.result.stdout).toContain('x40')
+  expect(r.result.stdout).toContain('ERROR db refused')
+  expect(r.result.stdout.length).toBeLessThan(raw.length)
+})

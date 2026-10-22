@@ -146,10 +146,17 @@ const HEADER_CELL = /^[A-Z][A-Z0-9_()/.+-]*$/
 
 /** Does this line look like a table header? Needs two or more uppercase cells. */
 function isHeader(line: string): boolean {
-  const starts = columnStarts(line)
-  if (starts.length < 2) return false
-  const cells = headerNames(line, starts)
-  return cells.every((c) => c.split(' ').every((w) => HEADER_CELL.test(w))) && cells.filter((c) => c !== '').length >= 2
+  const cells = line.includes('\t')
+    ? line
+        .split('\t')
+        .map((c) => c.trim())
+        .filter((c) => c !== '')
+    : (() => {
+        const starts = columnStarts(line)
+        return starts.length < 2 ? [] : headerNames(line, starts).filter((c) => c !== '')
+      })()
+  if (cells.length < 2) return false
+  return cells.every((c) => c.split(' ').every((w) => HEADER_CELL.test(w)))
 }
 
 /**
@@ -165,21 +172,47 @@ export function compressTable(raw: string, caps: Partial<TableCaps> = DEFAULT_TA
   const headerAt = lines.findIndex((l) => l.trim() !== '' && isHeader(l))
   if (headerAt < 0) return raw
 
-  const header = lines[headerAt].replace(/\s+$/, '')
-  const starts = columnStarts(header)
-  const names = headerNames(header, starts).map(fieldName)
-  const keep = names.map((n) => n !== '')
-  if (starts.length < 2) return raw
-
+  const rawHeader = lines[headerAt]
+  const tabbed = rawHeader.includes('\t')
+  const header = rawHeader.replace(/\s+$/, '')
   const prefix = lines.slice(0, headerAt).filter((l) => l.trim() !== '')
+
+  let names: string[]
+  let keep: boolean[]
   const rows: string[][] = []
-  for (const line of lines.slice(headerAt + 1)) {
-    if (line.trim() === '') continue
-    // A data row is flush with the header; anything indented is not a row.
-    if (/^\s/.test(line)) return raw
-    const vals = parseRow(line.replace(/\s+$/, ''), starts, 0, keep)
-    if (vals.filter((v) => v !== '').length < 2) return raw
-    rows.push(vals)
+
+  if (tabbed) {
+    // Tab-separated tables (`flux get ...`): columns are positional, so a row
+    // must carry exactly the header's field count. A tab inside a value would
+    // shift the row and mis-map every later column, so that bails instead.
+    const fields = (l: string): string[] => {
+      const f = l.split('\t').map((x) => x.trim())
+      while (f.length > 0 && f[f.length - 1] === '') f.pop()
+      return f
+    }
+    names = fields(header).map(fieldName)
+    keep = names.map((n) => n !== '')
+    if (names.length < 2) return raw
+    for (const line of lines.slice(headerAt + 1)) {
+      if (line.trim() === '') continue
+      const vals = fields(line)
+      if (vals.length !== names.length) return raw
+      rows.push(vals)
+    }
+  } else {
+    const starts = columnStarts(header)
+    names = headerNames(header, starts).map(fieldName)
+    keep = names.map((n) => n !== '')
+    if (starts.length < 2) return raw
+
+    for (const line of lines.slice(headerAt + 1)) {
+      if (line.trim() === '') continue
+      // A data row is flush with the header; anything indented is not a row.
+      if (/^\s/.test(line)) return raw
+      const vals = parseRow(line.replace(/\s+$/, ''), starts, 0, keep)
+      if (vals.filter((v) => v !== '').length < 2) return raw
+      rows.push(vals)
+    }
   }
   if (rows.length === 0) return raw
 
@@ -285,7 +318,24 @@ export function planKubectlGet(command: string): KubectlPlan | null {
     const t = tokens[i]
     if (t === '--help' || t === '-h' || t === '--version') return null
     if (t === '--watch' || t === '-w' || t === '--raw' || t === '--template') return null
-    if (t === '--output' || t === '-o' || t.startsWith('--output=') || (t.startsWith('-o') && t.length > 2)) return null
+    // `-o wide` is still a padded table and compresses fine. Every other
+    // output mode (json, yaml, name, jsonpath, custom-columns, go-template)
+    // is a machine format this parser must not touch.
+    if (t === '--output' || t === '-o') {
+      if (tokens[i + 1] === 'wide') {
+        i += 1
+        continue
+      }
+      return null
+    }
+    if (t.startsWith('--output=')) {
+      if (t.slice('--output='.length) !== 'wide') return null
+      continue
+    }
+    if (t.startsWith('-o') && t.length > 2) {
+      if (t.slice(2) !== 'wide') return null
+      continue
+    }
     if (t.startsWith('-')) {
       if (KUBECTL_VALUE_FLAGS.has(t)) i += 1 // skip the flag's value
       continue

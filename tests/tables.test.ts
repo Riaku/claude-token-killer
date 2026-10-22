@@ -52,7 +52,6 @@ test('machine formats and streams bail out', () => {
   for (const cmd of [
     'kubectl get pods -o json',
     'kubectl get pods -o yaml',
-    'kubectl get pods -owide',
     'kubectl get pods --output=jsonpath={.items[*].metadata.name}',
     'kubectl get pods --watch',
     'kubectl get pods -w',
@@ -226,5 +225,63 @@ test('never inflates: a narrow two-column table is left alone', () => {
 
 test('an indented non-row after the header means the format is not ours', () => {
   const raw = ['NAME   READY', 'web    1/1', '  (some footnote)'].join('\n')
+  expect(compressTable(raw)).toBe(raw)
+})
+
+test('-o wide is still a table, not a machine format', () => {
+  for (const cmd of [
+    'kubectl get nodes -o wide',
+    'kubectl get nodes --output=wide',
+    'kubectl get nodes -owide',
+    'kubectl get pods -n apps -o wide',
+  ]) {
+    expect(planKubectlGet(cmd)).not.toBeNull()
+  }
+  for (const cmd of [
+    'kubectl get nodes -o json',
+    'kubectl get nodes -o yaml',
+    'kubectl get nodes -o name',
+    'kubectl get nodes -ojson',
+    'kubectl get nodes -ojsonpath={.items[*].metadata.name}',
+    'kubectl get nodes -o custom-columns=NAME:.metadata.name',
+    'kubectl get nodes --output=json',
+    'kubectl get nodes -o go-template={{range .items}}{{.metadata.name}}{{end}}',
+  ]) {
+    expect(planKubectlGet(cmd)).toBeNull()
+  }
+})
+
+test('the extra wide columns are compacted like any other table', () => {
+  const raw = [
+    'NAME   STATUS   AGE    INTERNAL-IP      OS-IMAGE          CONTAINER-RUNTIME',
+    'nuc1   Ready    132d   192.168.100.80   Ubuntu 26.04 LTS  containerd://2.2.3-k3s1',
+    'nuc2   Ready    132d   192.168.100.81   Ubuntu 26.04 LTS  containerd://2.2.3-k3s1',
+    '',
+  ].join('\n')
+  const out = compressTable(raw, undefined, 'kubectl get nodes -o wide')
+  expect(out).toContain('# cols: name status age internal-ip os-image container-runtime')
+  expect(out).toContain('nuc1 Ready 132d 192.168.100.80 "Ubuntu 26.04 LTS" containerd://2.2.3-k3s1')
+  expect(out.length).toBeLessThan(raw.length)
+})
+
+test('tab-separated tables are parsed as positional columns', () => {
+  // Padded tab cells, the shape `flux get` actually emits.
+  const rows = Array.from({ length: 8 }, (_, i) => `flux-system  \tsvc-${i}      \tTrue`)
+  const raw = ['NAMESPACE  \tNAME          \tREADY', ...rows].join('\n')
+  const out = compressTable(raw, undefined, 'flux get kustomizations -A')
+  expect(out).toContain('# cols: namespace name ready')
+  expect(out).toContain('flux-system svc-3 True')
+  expect(out.length).toBeLessThan(raw.length)
+})
+
+test('a tight tab table with short values is left alone rather than inflated', () => {
+  // Tabs are already compact: the legend line costs about what they saved.
+  const rows = Array.from({ length: 8 }, (_, i) => `flux-system\tsvc-${i}\tTrue`)
+  const raw = ['NAMESPACE\tNAME\tREADY', ...rows].join('\n')
+  expect(compressTable(raw)).toBe(raw)
+})
+
+test('a tab inside a value breaks the column count, so the table bails', () => {
+  const raw = ['NAMESPACE\tNAME', 'a\tb\tc'].join('\n')
   expect(compressTable(raw)).toBe(raw)
 })

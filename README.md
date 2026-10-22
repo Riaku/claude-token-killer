@@ -2,10 +2,11 @@
 
 A Claude Code mod that kills wasted tokens at the source: it intercepts the
 commands an agent runs most — `git status`, `git diff`, `git show`, `git log`,
-recursive `grep`, `ls`, `find`, `docker ps`, `kubectl get`, `pytest`,
-`vitest`, `npm install`, `cargo test`, `go test`, `gh … list` — rewrites
-them into compact forms on the fly where that is provably safe, and
-compresses their output before the model ever sees it.
+recursive `grep`, `ls`, `find`, `docker ps`, `kubectl get`, `kubectl logs`,
+`flux get`, `pytest`, `vitest`, `playwright test`, `npm install`, `cargo test`,
+`go test`, `go build`, `go vet`, `gh … list` — rewrites them into compact forms
+on the fly where that is provably safe, and compresses their output before the
+model ever sees it.
 
 This is the Claude-native take on
 [rtk (Rust Token Killer)](https://github.com/rtk-ai/rtk) and
@@ -19,7 +20,9 @@ trust — one plugin, pure TypeScript, zero process spawns.
 > in-process. Caps and formats are opinionated; tune them via plugin
 > options. Only `git status`, `git diff`, `grep`, and `git show` are ever
 > *rewritten* — every other command runs exactly as written and only its
-> output is compressed.
+> output is compressed. A trailing `2>&1` is understood: it is split off,
+> the command in front of it is planned, and the redirect is re-appended
+> verbatim after any flags the rewrite added.
 
 ## What it does
 
@@ -34,6 +37,11 @@ trust — one plugin, pure TypeScript, zero process spawns.
 | `ls`, `ls -la` | none — runs exactly as written | `dir/` and `file (size)`, timestamps/owner/group dropped |
 | `find . -name …` | none | grouped by parent directory with counts (`dir/ (3): a.txt b.txt c.txt`) |
 | `docker ps`, `kubectl get <kind>` | none | padded column tables compacted to value rows |
+| `kubectl get … -o wide` | none | same table compaction — `wide` is a padded table, not a machine format; `json`/`yaml`/`name`/`jsonpath`/`custom-columns` still bail |
+| `kubectl logs <target>` | none | ANSI stripped, runs of identical lines collapsed to `line  xN`, head + tail kept under a cap with every `error`/`warn`/`panic` line rescued from the elided middle; `-f`/`--follow` bail |
+| `flux get <kind>` | none | the tab-separated table compacts like any other (flux uses a tabwriter, so this needs the tab path) |
+| `playwright test` (also via `npx`/`pnpm exec`/`yarn`/`bunx`) | none | result lines and failure blocks kept, per-worker progress dropped, summary counts folded onto one line; `--reporter`, `--ui`, `--debug`, `--headed` bail |
+| `go build`, `go vet` | none | `go: downloading/finding` chatter dropped, repeated identical diagnostics collapsed; every diagnostic line kept verbatim |
 | `pytest`, `vitest run` | none | failure blocks and summaries kept, progress dots/bars/spinners dropped, counts on one line |
 | `npm`/`pnpm`/`yarn install` | none | summary lines (`added N packages`, `N vulnerabilities`, `WARN`/`ERR`) only |
 | `cargo test` | none | per-binary `test result:` lines and failure blocks; `error` lines always survive |
@@ -50,10 +58,12 @@ else run **exactly as the model wrote them**. A compressor that would make
 the output *longer* is discarded. If the mod itself throws, the dispatch is
 replayed untouched (fail-open).
 
-Measured live in one Claude Code session against real commands (bytes the
+Measured live in Claude Code sessions against real commands (bytes the
 model received vs raw stdout): `ls -la` 705 → 105, `git log` 1,179 → 329,
 `git show HEAD` 527 → 171, `kubectl get pods -n apps` 2,588 → 1,529,
-`gh pr list --limit 5` 708 → 627. Savings depend on shape, not just size:
+`gh pr list --limit 5` 708 → 627, `kubectl logs` of a 301-line pod log
+3,927 → 45, `kubectl get nodes -o wide` 589 → 463, `flux get kustomizations -A`
+431 → 351. Savings depend on shape, not just size:
 a `find` whose results are one file per directory barely shrinks (165 → 164,
 shorter by one byte), and the never-inflate guard leaves it alone.
 
@@ -156,12 +166,16 @@ hooks/
   gitlog.ts       git log: planner + one-line-per-commit compaction
   ls.ts           ls long format: planner + entry compaction
   find.ts         find: planner (side-effect flags bail) + directory grouping
-  tables.ts       docker ps / kubectl get: generic column-table compactor + planners
+  tables.ts       docker ps / kubectl get: generic column-table compactor (space + tab) + planners
+  kubectllogs.ts  kubectl logs: planner (streams/unknown flags bail) + log compaction
+  flux.ts         flux get: planner; table body via tables.ts
   pytest.ts       pytest output compaction
   vitest.ts       vitest output compaction
+  playwright.ts   playwright test output compaction
   npm.ts          npm/pnpm/yarn install output compaction
   cargotest.ts    cargo test output compaction (error lines always survive)
   gotest.ts       go test output compaction
+  gobuild.ts      go build / go vet output compaction
   gh.ts           gh pr|issue|run list table compaction
   powershell.ts   Windows-only PowerShell handler (Get-ChildItem)
 tests/            claude-code/testing suites, one file per module

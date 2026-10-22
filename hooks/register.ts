@@ -6,8 +6,12 @@
 // no-op.
 //
 // Coverage: git status / diff / show / log, recursive grep, ls, find,
-// docker ps, kubectl get, pytest, vitest, npm|pnpm install, cargo test,
-// go test, and gh pr|issue|run list.
+// docker ps, kubectl get (+ -o wide), kubectl logs, flux get, pytest, vitest,
+// playwright test, npm|pnpm install, cargo test, go test, go build|vet, and
+// gh pr|issue|run list.
+//
+// A trailing `2>&1` is understood: it is split off the command tail, planned
+// without it, and re-appended verbatim after any added flags.
 //
 // Fail-open by design: a compressor that throws simply lets the original
 // output through (the engine skips a throwing hook). Unlike a redactor, the
@@ -15,16 +19,20 @@
 
 import type { Register } from 'claude-code'
 import { DEFAULT_CAPS, compressGitDiff, compressGitStatus, compressGrep, type Caps } from './compress.ts'
-import { planRewrite } from './plan.ts'
+import { planRewrite, splitStderrMerge, withStderrMerge } from './plan.ts'
 import { compressPsDir, planPowerShell } from './powershell.ts'
 import { compressCargoTest, planCargoTest } from './cargotest.ts'
 import { compressFind, planFind } from './find.ts'
+import { compressFluxGet, planFluxGet } from './flux.ts'
 import { compressGh, planGh } from './gh.ts'
 import { compressGitLog, planGitLog } from './gitlog.ts'
 import { compressGitShow, planGitShow } from './gitshow.ts'
+import { compressGoBuild, planGoBuild } from './gobuild.ts'
 import { compressGoTest, planGoTest } from './gotest.ts'
+import { compressKubectlLogs, planKubectlLogs } from './kubectllogs.ts'
 import { compressLs, planLs } from './ls.ts'
 import { compressNpmInstall, planNpmInstall } from './npm.ts'
+import { compressPlaywright, planPlaywright } from './playwright.ts'
 import { compressPytest, planPytest } from './pytest.ts'
 import { compressTable, planDocker, planKubectlGet } from './tables.ts'
 import { compressVitest, planVitest } from './vitest.ts'
@@ -43,18 +51,27 @@ const PLANNERS: ReadonlyArray<(command: string) => Plan | null> = [
   planFind,
   planDocker,
   planKubectlGet,
+  planKubectlLogs,
+  planFluxGet,
   planPytest,
   planVitest,
+  planPlaywright,
   planNpmInstall,
   planCargoTest,
   planGoTest,
+  planGoBuild,
   planGh,
 ]
 
 function planAny(command: string): Plan | null {
+  // A trailing `2>&1` is stripped before planning and re-appended verbatim
+  // after whatever flags a planner adds. Left in place it would bail (the
+  // tokenizer reads `>` as an operator) or, worse, get re-quoted into a
+  // literal argument.
+  const { body, merged } = splitStderrMerge(command)
   for (const planner of PLANNERS) {
-    const plan = planner(command)
-    if (plan) return plan
+    const plan = planner(body)
+    if (plan) return { kind: plan.kind, command: withStderrMerge(plan.command, merged) }
   }
   return null
 }
@@ -71,11 +88,15 @@ const COMPRESSORS: Record<string, (text: string, caps: Caps, command: string) =>
   find: (t, c, cmd) => compressFind(t, { maxEntries: c.maxDirEntries }, cmd),
   'docker-ps': (t, _c, cmd) => compressTable(t, undefined, cmd),
   'kubectl-get': (t, _c, cmd) => compressTable(t, undefined, cmd),
+  'kubectl-logs': (t, _c, cmd) => compressKubectlLogs(t, undefined, cmd),
+  'flux-get': (t, _c, cmd) => compressFluxGet(t, undefined, cmd),
   pytest: (t, _c, cmd) => compressPytest(t, undefined, cmd),
   vitest: (t, _c, cmd) => compressVitest(t, undefined, cmd),
+  playwright: (t, _c, cmd) => compressPlaywright(t, undefined, cmd),
   'npm-install': (t, _c, cmd) => compressNpmInstall(t, undefined, cmd),
   'cargo-test': (t) => compressCargoTest(t),
   'go-test': (t) => compressGoTest(t),
+  'go-build': (t, _c, cmd) => compressGoBuild(t, undefined, cmd),
   gh: (t) => compressGh(t),
 }
 
