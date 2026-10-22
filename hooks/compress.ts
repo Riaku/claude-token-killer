@@ -277,6 +277,7 @@ function compressGrepInner(text: string, caps: Caps = DEFAULT_CAPS, command?: st
   const hint = command ? `${command} # tk:raw` : 're-run with # tk:raw'
   const out: string[] = [`${total} match${total === 1 ? '' : 'es'} in ${byFile.size} file${byFile.size === 1 ? '' : 's'}`]
   let budget = caps.maxGrepTotal
+  let hiddenByFile = 0
 
   for (const [file, matches] of byFile) {
     if (budget <= 0) break
@@ -284,12 +285,20 @@ function compressGrepInner(text: string, caps: Caps = DEFAULT_CAPS, command?: st
     out.push('')
     out.push(`${file} (${matches.length}):`)
     for (const m of shown) out.push(truncate(m))
-    if (matches.length > shown.length) out.push(`... +${matches.length - shown.length} more in ${file} (raw: ${hint})`)
+    if (matches.length > shown.length) {
+      const hidden = matches.length - shown.length
+      hiddenByFile += hidden
+      out.push(`... +${hidden} more in ${file} (raw: ${hint})`)
+    }
     budget -= shown.length
   }
 
+  // Two separate reasons hide a match: the per-file cap, already reported under
+  // its file, and the total budget. Report the budget on its own so no match is
+  // counted twice.
   const shownTotal = caps.maxGrepTotal - Math.max(budget, 0)
-  if (total > shownTotal) out.push(`... +${total - shownTotal} matches elided (raw: ${hint})`)
+  const hiddenByBudget = total - shownTotal - hiddenByFile
+  if (hiddenByBudget > 0) out.push(`... +${hiddenByBudget} matches elided by the total cap (raw: ${hint})`)
 
   if (notes.length > 0) out.push('', ...notes)
   // Two matches in one file cost more as a grouped listing than as raw grep
