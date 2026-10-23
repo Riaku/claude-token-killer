@@ -1,4 +1,6 @@
 import { expect, mock, test, tier } from 'claude-code/testing'
+import { CAP_CHOICES, DEFAULT_CAPS, type Caps } from '../hooks/compress.ts'
+import { readCaps } from '../hooks/register.ts'
 
 tier('user')
 
@@ -538,4 +540,50 @@ test('cargo test elision hint names the executed command', async ($, on) => {
 
   expect(seen[0]).toBe('cargo test --lib')
   expect(r.result.stdout).toContain('raw: cargo test --lib # tk:raw')
+})
+
+// The manifest declares each cap as a string pick-list, because Claude Code's
+// `/plugin configure` dialog prefills choices and booleans but opens a `number`
+// row blank. So the hook has to take both shapes - the picker's string today,
+// and the plain number an older settings.json may still hold - and it only
+// accepts a value that is on the cap's ladder in CAP_CHOICES. Anything else is
+// a knob that does not exist, and the shipped default applies.
+test('caps hold to their pick-list and fall back to the default', () => {
+  const keys = Object.keys(DEFAULT_CAPS) as (keyof Caps)[]
+
+  for (const key of keys) {
+    const shipped = DEFAULT_CAPS[key]
+    expect(readCaps({ [key]: String(shipped) })[key]).toBe(shipped)
+    expect(readCaps({ [key]: shipped })[key]).toBe(shipped)
+
+    // Every rung the configure dialog offers must survive the round trip.
+    for (const rung of CAP_CHOICES[key]) {
+      expect(readCaps({ [key]: String(rung) })[key]).toBe(rung)
+      expect(readCaps({ [key]: rung })[key]).toBe(rung)
+    }
+  }
+
+  // Out-of-list values, junk and shapes that merely look numeric: a stored
+  // value Claude Code would not accept must not become a cap here either.
+  const junk = [
+    { maxGrepPerFile: '1000' },
+    { maxGrepPerFile: '137' },
+    { maxGrepPerFile: '0x10' },
+    { maxGrepPerFile: '7.5' },
+    { maxGrepPerFile: 7.5 },
+    { maxGrepPerFile: '1e308' },
+    { maxGrepPerFile: '' },
+    { maxGrepPerFile: 'abc' },
+    { maxGrepPerFile: 0 },
+    { maxGrepPerFile: -4 },
+    { maxGrepPerFile: null },
+    { maxGrepPerFile: {} },
+    { maxGrepPerFile: [] },
+  ]
+  for (const options of junk) {
+    expect(readCaps(options as Record<string, unknown>).maxGrepPerFile).toBe(DEFAULT_CAPS.maxGrepPerFile)
+  }
+
+  expect(readCaps({}).maxStatusFiles).toBe(DEFAULT_CAPS.maxStatusFiles)
+  expect(readCaps({ maxLineLen: '120' }).maxLineLen).toBe(120)
 })

@@ -11,7 +11,7 @@
 // tokens, never lost safety.
 
 import type { Register } from 'claude-code'
-import { DEFAULT_CAPS, compressGitDiff, compressGitStatus, compressGrep, type Caps } from './compress.ts'
+import { CAP_CHOICES, DEFAULT_CAPS, compressGitDiff, compressGitStatus, compressGrep, type Caps } from './compress.ts'
 import { planRewrite, splitStderrMerge, withStderrMerge } from './plan.ts'
 import { compressPsDir, planPowerShell } from './powershell.ts'
 import { compressCargoTest, planCargoTest } from './cargotest.ts'
@@ -35,7 +35,32 @@ import { compressPytest, planPytest } from './pytest.ts'
 import { compressTable, planDocker, planKubectlGet } from './tables.ts'
 import { compressVitest, planVitest } from './vitest.ts'
 
-type Options = Partial<Caps> & { notify?: boolean }
+// The manifest declares each cap as a string pick-list (`options`), because
+// Claude Code's `/plugin configure` dialog only prefills choices and booleans -
+// a `number` field opens blank, so a fresh install would ask for seven numbers
+// instead of showing the defaults. The values arrive as strings here, and an
+// older config may still hold plain numbers, so both are accepted - but only
+// the rungs in CAP_CHOICES, so an out-of-list value cannot quietly become a cap.
+type Options = Partial<Record<keyof Caps, number | string>> & { notify?: boolean }
+
+/** One cap: a picker string or a number on its ladder, else the default. */
+function capValue(value: unknown, key: keyof Caps): number {
+  const n = typeof value === 'number' ? value : typeof value === 'string' && value.trim() !== '' ? Number(value) : NaN
+  return Number.isInteger(n) && CAP_CHOICES[key].includes(n) ? n : DEFAULT_CAPS[key]
+}
+
+/** The caps register() runs with: every option, defaulted and coerced. */
+export function readCaps(opts: Readonly<Record<string, unknown>>): Caps {
+  return {
+    maxStatusFiles: capValue(opts.maxStatusFiles, 'maxStatusFiles'),
+    maxDiffLinesPerFile: capValue(opts.maxDiffLinesPerFile, 'maxDiffLinesPerFile'),
+    maxDiffTotalLines: capValue(opts.maxDiffTotalLines, 'maxDiffTotalLines'),
+    maxGrepPerFile: capValue(opts.maxGrepPerFile, 'maxGrepPerFile'),
+    maxGrepTotal: capValue(opts.maxGrepTotal, 'maxGrepTotal'),
+    maxLineLen: capValue(opts.maxLineLen, 'maxLineLen'),
+    maxDirEntries: capValue(opts.maxDirEntries, 'maxDirEntries'),
+  }
+}
 
 /** Bytes saved before the toast is worth showing. */
 const TOAST_MIN_BYTES = 200
@@ -161,15 +186,7 @@ const COMPRESSORS: Record<string, (text: string, caps: Caps, command: string) =>
 export const register: Register = (on, options) => {
   const opts = (options ?? {}) as Options
   const notify = opts.notify !== false
-  const caps: Caps = {
-    maxStatusFiles: opts.maxStatusFiles ?? DEFAULT_CAPS.maxStatusFiles,
-    maxDiffLinesPerFile: opts.maxDiffLinesPerFile ?? DEFAULT_CAPS.maxDiffLinesPerFile,
-    maxDiffTotalLines: opts.maxDiffTotalLines ?? DEFAULT_CAPS.maxDiffTotalLines,
-    maxGrepPerFile: opts.maxGrepPerFile ?? DEFAULT_CAPS.maxGrepPerFile,
-    maxGrepTotal: opts.maxGrepTotal ?? DEFAULT_CAPS.maxGrepTotal,
-    maxLineLen: opts.maxLineLen ?? DEFAULT_CAPS.maxLineLen,
-    maxDirEntries: opts.maxDirEntries ?? DEFAULT_CAPS.maxDirEntries,
-  }
+  const caps: Caps = readCaps(opts as unknown as Record<string, unknown>)
 
   // Platform gate: one memoized in-process env read, no spawn. `OS=Windows_NT`
   // is set in every NT-family process (native cmd, PowerShell, Git Bash, Cygwin)
