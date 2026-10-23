@@ -22,6 +22,16 @@ commands the mod rewrites, you get the compact form rather than the original
 pretty-printed one; for everything else, you get the same output you would have
 seen, whole.
 
+Under the prompt, the plugin keeps a running total for the session:
+
+```
+  ⚠ token-killer: 6778 B saved this session
+```
+
+Bytes, because bytes are what the hook measured. The total survives `--resume`,
+starts clean in a new session, and only moves on a call that actually shrank.
+Nothing is painted outside the terminal, so `-p` output and the SDK see no line.
+
 ## Install
 
 Add the marketplace, then install the plugin:
@@ -192,11 +202,42 @@ at the default 80 columns that is the common case, not the edge case.
 The handler stays inert unless the platform reports Windows: the gate is one
 memoized environment read, and no process is spawned to decide it.
 
+## The session counter
+
+The line under the prompt is the plugin's own pinned status line, so it needs no
+configuration and no `settings.json` edit: it appears after the first call that
+shrank something, and a session that has saved nothing shows no line at all.
+
+- **Bytes, not tokens.** The hook counts UTF-8 bytes, which is what the text
+  actually costs; a token count would need an invented bytes-per-token ratio.
+- **Per session.** The total lives in the plugin's own store under
+  `saved:<session id>`, so a new session starts at zero and `--resume` picks its
+  total back up.
+- **Only real savings count.** A refusal, an error, an interrupt, a command the
+  planner declines, and output the compressor could not shrink all add nothing.
+- **Bounded.** At session start the plugin drops every entry untouched for 14
+  days, and every entry past the newest 100, keeping the session being resumed
+  whatever its age.
+- **Terminal only.** `$.ui.status` is pinned in the TUI; under `-p` or the SDK
+  nothing is rendered, though the total still accumulates.
+
+The store is
+`<CLAUDE_CONFIG_DIR>/plugins/store/token-killer_<suffix>.json`, with one entry
+per session. If you keep your own `statusLine` and want the number there too,
+read that file and look up `saved:<session_id>`; each value is
+`{"bytes": N, "at": <ms>}`.
+
+`/clear` starts a new session id without a new `session.start`, so the old total
+stays on screen until the next call shrinks something; that call switches the
+counter to the new id and clears the line.
+
 ## Performance
 
-Startup cost is zero. Nothing runs at session start, and no path spawns a
-process. The platform gate is a memoized in-process environment read, and the
-planner chain returns before that read for any command the mod does not cover.
+No path spawns a process. The platform gate is a memoized in-process environment
+read, and the planner chain returns before that read for any command the mod
+does not cover. The counter costs a store read at session start (one per stored
+session while pruning) and one small JSON write per compressed call; the
+in-process total means a tool call never reads the store back.
 
 ## Change the limits
 

@@ -1,6 +1,6 @@
 {
   "name": "token-killer",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Rewrites git status, git diff, git show and recursive grep into token-compact forms, then compacts command output inside Claude Code: git, grep and rg, directory listings, docker and kubectl, flux, gh, pytest, vitest, playwright, npm, cargo, go, and host listings. No external binary, zero process spawns.",
   "author": {
     "name": "Riaku"
