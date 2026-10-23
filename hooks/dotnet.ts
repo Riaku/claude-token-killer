@@ -66,12 +66,15 @@ export function planDotnet(command: string): DotnetPlan | null {
   return { kind: family.kind, command: raw }
 }
 
-/** The diagnostic without its file position or its project suffix, so repeats collapse. */
+/**
+ * The diagnostic without its trailing `[project]` suffix.
+ *
+ * MSBuild prints one diagnostic once per project that compiles the file, so the
+ * project suffix is the only part that differs. The file and line stay in the
+ * key: two different files that produce the same message are two findings.
+ */
 function diagKey(line: string): string {
-  return line
-    .slice(line.search(DIAG))
-    .replace(/\s*\[[^\]]*\]\s*$/, '')
-    .trim()
+  return line.replace(/\s*\[[^\]]*\]\s*$/, '').trim()
 }
 
 /**
@@ -112,13 +115,17 @@ export function compressDotnet(raw: string, caps: DotnetCaps, command = ''): str
 
   const cap = Math.max(0, caps.maxDiagLines)
   const seen: string[] = []
+  const collapse = { repeated: 0 }
   const out = marks.keep.map((at) => lines[at]).reduce<string[]>((acc, line) => {
     if (!DIAG.test(line)) {
       acc.push(line.trimEnd())
       return acc
     }
     const key = diagKey(line)
-    if (seen.includes(key)) return acc
+    if (seen.includes(key)) {
+      collapse.repeated += 1
+      return acc
+    }
     seen.push(key)
     if (seen.length > cap) return acc
     acc.push(line.trimEnd())
@@ -126,6 +133,7 @@ export function compressDotnet(raw: string, caps: DotnetCaps, command = ''): str
   }, [])
 
   if (seen.length > cap) out.push(`... +${seen.length - cap} more diagnostics`)
+  if (collapse.repeated > 0) out.push(`... ${collapse.repeated} repeated per-project diagnostics collapsed`)
   const passes = lines.filter((line) => PASSED.test(line)).length
   if (passes > 0) out.unshift(`(${passes} test${passes === 1 ? '' : 's'} passed)`)
 

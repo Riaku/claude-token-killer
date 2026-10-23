@@ -212,31 +212,11 @@ export function compressCmdlet(
   const cap = Math.max(0, caps.maxRows)
   const hint = command ? ` - raw: ${command} # tk:raw` : ' - raw: re-run with # tk:raw'
 
-  if (!splittable) {
-    const out = [
-      ...tables[0].table.prefix,
-      `(${all.length} ${all.length === 1 ? 'row' : 'rows'})`,
-      `# header: ${tables[0].table.header.replace(/ {2,}/g, ' ')}`,
-    ]
-    let shown = 0
-    rows.forEach((t) => {
-      if (shown >= cap) return
-      const take = Math.min(t.rows.length, cap - shown)
-      if (take === 0) return
-      if (t.dir !== null) out.push(`${t.dir} (${t.rows.length}):`)
-      out.push(...t.rows.slice(0, take).map((row) => row.trim().replace(/ {2,}/g, ' ')))
-      shown += take
-    })
-    if (all.length > shown) out.push(`... +${all.length - shown} more${hint}`)
-    const collapsed = out.filter((l) => l !== '').join('\n')
-    return collapsed.length < raw.length ? collapsed : raw
-  }
-
+  // Columns dropped for their name alone, then columns with no value at all,
+  // then columns whose every value is the same one - that last group costs one
+  // legend entry instead of a cell per row.
   const policy = DROP[kind]
-  const kept = names
-    .map((_, i) => i)
-    .filter((i) => names[i] !== '' && !policy.includes(plainName(names[i])))
-  // A column with no value in any row costs a `-` per row and says nothing.
+  const kept = names.map((_, i) => i).filter((i) => names[i] !== '' && !policy.includes(plainName(names[i])))
   const filled = kept.filter((i) => values.some((row) => (row[i] ?? '') !== ''))
   const shared = filled.filter((i) => values.every((row) => row[i] === values[0][i]))
   const varying = filled.filter((i) => !shared.includes(i))
@@ -244,10 +224,15 @@ export function compressCmdlet(
   const out: string[] = [
     ...tables[0].table.prefix,
     `(${all.length} ${all.length === 1 ? 'row' : 'rows'})`,
-    legend(
-      varying.map((i) => plainName(names[i])),
-      shared.map((i) => `${plainName(names[i])}=${cell(values[0][i] ?? '')}`),
-    ),
+    // A table whose cells cannot be mapped back onto its headers keeps its rows
+    // whole and names the header verbatim; a mapped table lists the columns it
+    // rendered.
+    splittable
+      ? legend(
+          varying.map((i) => plainName(names[i])),
+          shared.map((i) => `${plainName(names[i])}=${cell(values[0][i] ?? '')}`),
+        )
+      : `# header: ${tables[0].table.header.replace(/ {2,}/g, ' ')}`,
   ]
 
   // Sections keep their own heading so a module listing still says which
@@ -260,7 +245,14 @@ export function compressCmdlet(
     if (take === 0) return
     if (t.dir !== null) out.push(`${t.dir} (${t.table.rows.length}):`)
     const start = rows.slice(0, at).reduce((n, r) => n + r.rows.length, 0)
-    out.push(...values.slice(start, start + take).map((row) => varying.map((i) => cell(row[i] ?? '')).join(' ')))
+    const slice = t.table.rows.slice(0, take)
+    out.push(
+      ...slice.map((row, offset) =>
+        splittable
+          ? varying.map((i) => cell(values[start + offset][i] ?? '')).join(' ')
+          : row.trim().replace(/ {2,}/g, ' '),
+      ),
+    )
     shown += take
   })
   if (all.length > shown) out.push(`... +${all.length - shown} more${hint}`)

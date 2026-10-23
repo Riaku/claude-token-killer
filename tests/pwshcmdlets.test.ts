@@ -210,6 +210,36 @@ test('the row cap elides with a count and the tk:raw recovery hint', () => {
   expect(out).toContain('+2 more - raw: Get-Service # tk:raw')
 })
 
+test('a value with a space keeps its row whole rather than shifting the columns', () => {
+  // pwsh pads with spaces and cannot say which space was part of a value, so
+  // `CommandLine` defeats the split. The row survives verbatim minus padding.
+  const cim = [
+    'ProcessId Name                 CommandLine',
+    '--------- ----                 -----------',
+    '     2100 hermes               /usr/bin/hermes --serve --port 8080',
+    '     2201 node                 node /srv/app/index.js --config a.json',
+  ].join('\n')
+  const out = compressCmdlet(cim, 'ps-cim', CAPS, 'Get-CimInstance Win32_Process')
+  expect(out).toContain('# header: ')
+  expect(out).toContain('2100 hermes /usr/bin/hermes --serve --port 8080')
+  expect(out).not.toContain('---')
+})
+
+test('a table with a row missing its trailing columns keeps its rows whole', () => {
+  // Get-Command prints a handful of built-in functions with no Version and no
+  // Source, which leaves those rows two cells short of the rule's width.
+  const commands = [
+    'CommandType     Name                                               Version    Source',
+    '-----------     ----                                               -------    ------',
+    'Function        cd..',
+    'Cmdlet          Add-Content                                        7.0.0.0    Microsoft.PowerShell.Management',
+  ].join('\n')
+  const out = compressCmdlet(commands, 'ps-command', CAPS, 'Get-Command')
+  expect(out).toContain('# header: ')
+  expect(out).toContain('Function cd..')
+  expect(out).toContain('Add-Content 7.0.0.0 Microsoft.PowerShell.Management')
+})
+
 test('non-table output is returned unchanged', () => {
   const plain = 'Get-Process: no process found\n'
   expect(compressCmdlet(plain, 'ps-process', CAPS, 'Get-Process')).toBe(plain)

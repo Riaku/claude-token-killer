@@ -12,7 +12,7 @@ const BUILD = [
   '  Restored /src/App/App.csproj (in 120 ms).',
   '  Restored /src/Tests/Tests.csproj (in 90 ms).',
   '/src/App/Program.cs(3,9): warning CS0168: The variable \'x\' is declared but never used [/src/App/App.csproj]',
-  '/src/Tests/Program.cs(3,9): warning CS0168: The variable \'x\' is declared but never used [/src/Tests/Tests.csproj]',
+  '/src/App/Program.cs(3,9): warning CS0168: The variable \'x\' is declared but never used [/src/Tests/Tests.csproj]',
   '/src/App/Program.cs(20,9): error CS0103: The name \'foo\' does not exist [/src/App/App.csproj]',
   '  App -> /src/App/bin/Debug/net8.0/App.dll',
   '  Tests -> /src/Tests/bin/Debug/net8.0/Tests.dll',
@@ -74,9 +74,22 @@ test('restore chatter and the banner go, the diagnostics and summary stay', () =
   expect(out.length).toBeLessThan(BUILD.length)
 })
 
-test('one warning printed per project is collapsed to one line', () => {
+test('one warning printed per project is collapsed to one line and counted', () => {
   const out = compressDotnet(BUILD, CAPS, 'dotnet build')
   expect(out.split('\n').filter((l) => l.includes('CS0168')).length).toBe(1)
+  expect(out).toContain('1 repeated per-project diagnostics collapsed')
+})
+
+test('the same message in two different files is two findings, not a repeat', () => {
+  const twoFiles = [
+    "/src/A/Foo.cs(1,9): warning CS0219: The variable 'i' is assigned but its value is never used [/src/A/A.csproj]",
+    "/src/B/Bar.cs(9,3): warning CS0219: The variable 'i' is assigned but its value is never used [/src/B/B.csproj]",
+    'Build succeeded.',
+  ].join('\n')
+  const out = compressDotnet(twoFiles, CAPS, 'dotnet build')
+  expect(out).toContain('/src/A/Foo.cs(1,9)')
+  expect(out).toContain('/src/B/Bar.cs(9,3)')
+  expect(out).not.toContain('collapsed')
 })
 
 test('passing tests are counted, the failure keeps its message and stack frame', () => {
