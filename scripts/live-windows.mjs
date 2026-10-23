@@ -129,9 +129,13 @@ else {
 // Every one of these runs against the real cmdlet and its real formatting.
 // `check` fails on an inflated or nondeterministic result and on a marker that
 // went missing, so a parser that quietly drops a row is caught here.
+// The row cap is deliberately high here: this harness checks the parser against
+// the whole table, and a 200-row cap would legitimately elide the marker row it
+// looks for. The cap has its own unit test.
+const CAP = { maxRows: 100000 }
 const TABLES = [
   { name: 'Get-Process', cmd: 'Get-Process', kind: 'ps-process', keep: [] },
-  { name: 'Get-Command', cmd: 'Get-Command', kind: 'ps-command', keep: ['Get-ChildItem'] },
+  { name: 'Get-Command', cmd: 'Get-Command', kind: 'ps-command', keep: ['Get-ChildItem', 'Get-Process'] },
   { name: 'Get-Module', cmd: 'Get-Module -ListAvailable', kind: 'ps-module', keep: [] },
 ]
 for (const t of TABLES) {
@@ -142,8 +146,7 @@ for (const t of TABLES) {
     console.log(`FAIL plan for ${t.cmd}: ${JSON.stringify(plan)}`)
     continue
   }
-  const keep = t.keep.length > 0 ? t.keep : []
-  check(t.name, raw, (text) => compressCmdlet(text, t.kind, { maxRows: 200 }, plan.command), keep)
+  check(t.name, raw, (text) => compressCmdlet(text, t.kind, CAP, plan.command), t.keep)
 }
 
 // Windows-only cmdlets: these shapes do not exist on Linux pwsh at all.
