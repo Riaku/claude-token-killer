@@ -15,6 +15,9 @@ import { tmpdir } from 'node:os'
 
 const H = new URL('../hooks/', import.meta.url).href
 const { planPowerShell, compressPsDir } = await import(H + 'powershell.ts')
+const { compressCmdlet } = await import(H + 'pwshcmdlets.ts')
+const { compressEvents } = await import(H + 'pwshevents.ts')
+const { compressHelp } = await import(H + 'pwshhelp.ts')
 
 let failed = 0
 let skipped = 0
@@ -122,13 +125,75 @@ else {
   console.log('FAIL Format-List output changed shape')
 }
 
-// Commands that are not Get-ChildItem must not be captured.
-for (const cmd of ['git status', 'Get-Content x', 'cat foo', 'Get-ChildItem | Remove-Item']) {
+// ------------------------------------------------------------ cmdlet tables
+// Every one of these runs against the real cmdlet and its real formatting.
+// `check` fails on an inflated or nondeterministic result and on a marker that
+// went missing, so a parser that quietly drops a row is caught here.
+// The row cap is deliberately high here: this harness checks the parser against
+// the whole table, and a 200-row cap would legitimately elide the marker row it
+// looks for. The cap has its own unit test.
+const CAP = { maxRows: 100000 }
+const TABLES = [
+  { name: 'Get-Process', cmd: 'Get-Process', kind: 'ps-process', keep: [] },
+  { name: 'Get-Command', cmd: 'Get-Command', kind: 'ps-command', keep: ['Get-ChildItem', 'Get-Process'] },
+  { name: 'Get-Module', cmd: 'Get-Module -ListAvailable', kind: 'ps-module', keep: [] },
+]
+for (const t of TABLES) {
+  const raw = ps(`${t.cmd} | Out-String -Width 80\n`)
+  const plan = planPowerShell(t.cmd)
+  if (plan === null || plan.kind !== t.kind) {
+    failed += 1
+    console.log(`FAIL plan for ${t.cmd}: ${JSON.stringify(plan)}`)
+    continue
+  }
+  check(t.name, raw, (text) => compressCmdlet(text, t.kind, CAP, plan.command), t.keep)
+}
+
+// Windows-only cmdlets: these shapes do not exist on Linux pwsh at all.
+const WINDOWS_ONLY = [
+  { name: 'Get-Service', cmd: 'Get-Service', kind: 'ps-service', keep: [] },
+  { name: 'Get-CimInstance', cmd: 'Get-CimInstance Win32_Process', kind: 'ps-cim', keep: [] },
+  { name: 'Get-NetTCPConnection', cmd: 'Get-NetTCPConnection', kind: 'ps-net', keep: [] },
+  { name: 'Get-WinEvent', cmd: 'Get-WinEvent -LogName System -MaxEvents 20', kind: 'ps-event', keep: [] },
+]
+for (const t of WINDOWS_ONLY) {
+  if (!isWindows) {
+    skipped += 1
+    console.log(`SKIP ${t.name}: not a Windows host`)
+    continue
+  }
+  const raw = ps(`${t.cmd} | Out-String -Width 80\n`)
+  const compress = (text) =>
+    t.kind === 'ps-event'
+      ? compressEvents(text, { maxRows: 200 }, t.cmd)
+      : compressCmdlet(text, t.kind, { maxRows: 200 }, t.cmd)
+  check(t.name, raw, compress, t.keep)
+}
+
+// --------------------------------------------------------------- Get-Help
+const helpRaw = ps('Get-Help Get-ChildItem -Full | Out-String -Width 80\n')
+check('Get-Help -Full', helpRaw, (text) => compressHelp(text, { maxHelpLines: 200 }, 'Get-Help Get-ChildItem -Full'), [
+  'NAME',
+  'Get-ChildItem',
+])
+
+// ------------------------------------------- commands that must not be planned
+// `git status` is planned by the shared, cross-platform planners instead, so it
+// is checked separately from the cmdlet families below.
+for (const cmd of ['Get-Content x', 'cat foo', 'Get-ChildItem | Remove-Item', 'Write-Host hi']) {
   if (planPowerShell(cmd) === null) console.log(`ok   not planned: ${cmd}`)
   else {
     failed += 1
     console.log(`FAIL wrongly planned: ${cmd}`)
   }
+}
+
+// The cross-platform fall-through: `git status` must reach the git planner (and
+// its rewrite) rather than nothing at all.
+if (planPowerShell('git status') === null) console.log('ok   git status falls through to the shared planners')
+else {
+  failed += 1
+  console.log('FAIL git status was claimed by the PowerShell cmdlet planner')
 }
 
 rmSync(root, { recursive: true, force: true })

@@ -13,19 +13,32 @@
 
 import { stripAnsi } from './ansi.ts'
 import { UNSAFE } from './shell.ts'
-export type PsPlan = { kind: 'ps-dir'; command: string }
+import { planCmdlet } from './pwshcmdlets.ts'
+import { planEvent } from './pwshevents.ts'
+import { planHelp } from './pwshhelp.ts'
+import type { CmdletKind } from './pwshcmdlets.ts'
+
+export type PsKind = 'ps-dir' | CmdletKind | 'ps-event' | 'ps-help'
+export type PsPlan = { kind: PsKind; command: string }
 
 // Get-ChildItem and its built-in aliases. In PowerShell `ls` and `dir` ARE
 // Get-ChildItem, so the same table comes back and the same trim applies.
 const GCI_ALIASES = new Set(['get-childitem', 'gci', 'ls', 'dir'])
 
+/**
+ * Plan a PowerShell invocation one of the cmdlet compressors understands.
+ * Compression-only: the returned `command` is always the original string.
+ * Anything else returns null, and the handler falls through to the
+ * shell-agnostic planners (`git status`, `kubectl logs`, ...), whose output is
+ * the same whichever shell launched them.
+ */
 export function planPowerShell(command: string): PsPlan | null {
   const cmd = command.trim()
   if (!cmd) return null
   if (UNSAFE.test(cmd)) return null
   const first = cmd.split(/\s+/)[0].toLowerCase()
-  if (!GCI_ALIASES.has(first)) return null
-  return { kind: 'ps-dir', command: cmd }
+  if (GCI_ALIASES.has(first)) return { kind: 'ps-dir', command: cmd }
+  return planCmdlet(cmd) ?? planEvent(cmd) ?? planHelp(cmd)
 }
 
 function formatSize(bytes: number): string {
@@ -117,6 +130,25 @@ export function compressPsDir(raw: string, caps: PsDirCaps = DEFAULT_PS_DIR_CAPS
 
   if (!sawTable) return raw
 
+  const hint = command ? ` - raw: ${command} # tk:raw` : ' - raw: re-run with # tk:raw'
+  const render = (r: PsRow) =>
+    r.dir ? `${r.name}/` : r.size === null ? r.name : `${r.name} (${formatSize(r.size)})`
+
+  // `-Recurse` prints one section per directory, and a real tree has thousands
+  // of them under one command. A per-directory budget caps nothing - every
+  // directory is under it - and one budget spent in section order lets the first
+  // directory eat all of it, so the rest of the tree vanishes. What survives is
+  // the shape: one line per directory with its entry count, and a budget on
+  // directories. The names inside a directory come from listing it directly,
+  // which is one command away.
+  if (/-re(c(u(r(se)?)?)?)?\b/i.test(command)) {
+    const total = sections.reduce((n, s) => n + s.rows.length, 0)
+    const shown = sections.slice(0, caps.maxEntries).map((s) => `${s.dir ?? '.'} (${s.rows.length})`)
+    const out = [`(${sections.length} directories, ${total} entries)`, ...shown]
+    if (sections.length > shown.length) out.push(`... +${sections.length - shown.length} more directories${hint}`)
+    return out.join('\n')
+  }
+
   const out: string[] = []
   for (const s of sections) {
     const header = `${s.dir ?? '.'} (${s.rows.length} ${s.rows.length === 1 ? 'entry' : 'entries'}):`
@@ -124,12 +156,9 @@ export function compressPsDir(raw: string, caps: PsDirCaps = DEFAULT_PS_DIR_CAPS
       out.push(`${header} (empty)`)
       continue
     }
-    const render = (r: PsRow) =>
-      r.dir ? `${r.name}/` : r.size === null ? r.name : `${r.name} (${formatSize(r.size)})`
     const shown = s.rows.slice(0, caps.maxEntries).map((r) => `  ${render(r)}`)
     out.push(header, ...shown)
     if (s.rows.length > caps.maxEntries) {
-      const hint = command ? ` - raw: ${command} # tk:raw` : ' - raw: re-run with # tk:raw'
       out.push(`  ... +${s.rows.length - caps.maxEntries} more${hint}`)
     }
   }

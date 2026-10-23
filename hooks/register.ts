@@ -15,6 +15,10 @@ import { CAP_CHOICES, DEFAULT_CAPS, compressGitDiff, compressGitStatus, compress
 import { planRewrite, splitStderrMerge, withStderrMerge } from './plan.ts'
 import { installStatus, recordSaved, utf8Length, type StatusEngine } from './status.ts'
 import { compressPsDir, planPowerShell } from './powershell.ts'
+import { compressCmdlet } from './pwshcmdlets.ts'
+import { compressEvents } from './pwshevents.ts'
+import { compressHelp } from './pwshhelp.ts'
+import { compressDotnet, planDotnet } from './dotnet.ts'
 import { compressCargoTest, planCargoTest } from './cargotest.ts'
 import { compressFind, planFind } from './find.ts'
 import { compressFluxGet, planFluxGet } from './flux.ts'
@@ -63,6 +67,8 @@ export function readCaps(opts: Readonly<Record<string, unknown>>): Caps {
     maxGrepTotal: capValue(opts.maxGrepTotal, 'maxGrepTotal'),
     maxLineLen: capValue(opts.maxLineLen, 'maxLineLen'),
     maxDirEntries: capValue(opts.maxDirEntries, 'maxDirEntries'),
+    maxCmdletRows: capValue(opts.maxCmdletRows, 'maxCmdletRows'),
+    maxDiagLines: capValue(opts.maxDiagLines, 'maxDiagLines'),
   }
 }
 
@@ -147,6 +153,7 @@ const PLANNERS: ReadonlyArray<(command: string) => Plan | null> = [
   planRg,
   planGitGrep,
   planRows,
+  planDotnet,
 ]
 
 function planAny(command: string): Plan | null {
@@ -160,6 +167,22 @@ function planAny(command: string): Plan | null {
     if (plan) return { kind: plan.kind, command: withStderrMerge(plan.command, merged) }
   }
   return null
+}
+
+/**
+ * Whether a shared planner's rewrite can run unchanged in PowerShell.
+ *
+ * A rewrite that only appends flags - `git status --porcelain=v1 -b` - is the
+ * same argument string in both shells. A rewrite that quotes is not: `'x'` is a
+ * literal in PowerShell and a shell-quoted word in bash, a backtick escapes the
+ * next character rather than running a substitution, `$name` is a variable, and
+ * `[`/`?`/`*` are wildcards the planner never saw. Those are skipped, and the
+ * command runs as written with no compression.
+ */
+export function psSafeRewrite(original: string, planned: string): boolean {
+  if (planned === original.trim()) return true
+  if (/['"`$(){}*?[\]]/.test(planned)) return false
+  return planned.split(/\s+/)[0] === original.trim().split(/\s+/)[0]
 }
 
 // Every compressor is `(text, caps, command)`: the second argument is the
@@ -193,6 +216,17 @@ const COMPRESSORS: Record<string, (text: string, caps: Caps, command: string) =>
   'go-test': (t, _c, cmd) => compressGoTest(t, undefined, cmd),
   'go-build': (t) => compressGoBuild(t),
   gh: (t, _c, cmd) => compressGh(t, {}, cmd),
+  'dotnet-build': (t, c, cmd) => compressDotnet(t, { maxDiagLines: c.maxDiagLines }, cmd),
+  'dotnet-test': (t, c, cmd) => compressDotnet(t, { maxDiagLines: c.maxDiagLines }, cmd),
+  'ps-dir': (t, c, cmd) => compressPsDir(t, { maxEntries: c.maxDirEntries }, cmd),
+  'ps-process': (t, c, cmd) => compressCmdlet(t, 'ps-process', { maxRows: c.maxCmdletRows }, cmd),
+  'ps-service': (t, c, cmd) => compressCmdlet(t, 'ps-service', { maxRows: c.maxCmdletRows }, cmd),
+  'ps-net': (t, c, cmd) => compressCmdlet(t, 'ps-net', { maxRows: c.maxCmdletRows }, cmd),
+  'ps-command': (t, c, cmd) => compressCmdlet(t, 'ps-command', { maxRows: c.maxCmdletRows }, cmd),
+  'ps-cim': (t, c, cmd) => compressCmdlet(t, 'ps-cim', { maxRows: c.maxCmdletRows }, cmd),
+  'ps-module': (t, c, cmd) => compressCmdlet(t, 'ps-module', { maxRows: c.maxCmdletRows }, cmd),
+  'ps-event': (t, c, cmd) => compressEvents(t, { maxRows: c.maxCmdletRows }, cmd),
+  'ps-help': (t, c, cmd) => compressHelp(t, { maxHelpLines: c.maxCmdletRows }, cmd),
 }
 
 export const register: Register = (on, options) => {
@@ -233,24 +267,41 @@ export const register: Register = (on, options) => {
   })
     .catch((_, e, next) => next(e))
 
-  // PowerShell tool: Get-ChildItem only, on Windows only. A PowerShell tool
-  // running on Linux is out of scope and passes through untouched. Same safety
-  // rules as the Bash side: refusal, error and interrupt pass through, and
-  // compression applies only when it shrinks the output.
+  // PowerShell tool. `Get-ChildItem`, the cmdlet tables, `Get-WinEvent`,
+  // `Get-Help` - and, when none of those match, the shell-agnostic compressors
+  // below: `git status`, `git diff`, `kubectl logs` and `gh pr view` print the
+  // same text whichever shell launched them, so a PowerShell session was
+  // otherwise leaving the plugin's largest savings on the table.
+  //
+  // Only a plan whose rewrite means the same thing in PowerShell is taken from
+  // the shared planners: no quotes, no backtick, no `$`, no glob characters.
+  // `git status --porcelain=v1 -b` is one string in both shells; a planner that
+  // re-quoted an argument is bash syntax and is skipped. Same safety rules as
+  // the Bash side: refusal, error and interrupt pass through, and compression
+  // applies only when it shrinks the output.
   on('tool.call', { tool: 'PowerShell' }, async ($, e, next) => {
     const command = (e as { command?: unknown }).command
     if (typeof command !== 'string') return next(e)
 
-    const plan = planPowerShell(command)
+    const own = planPowerShell(command)
+    const shared = own === null ? planAny(command) : null
+    const plan = own ?? (shared !== null && psSafeRewrite(command, shared.command) ? shared : null)
     if (!plan) return next(e)
 
-    // Windows-only, decided by an env read: this path never spawns anything.
-    if (windows === null) windows = (await $.env.get('OS')) === 'Windows_NT'
-    if (!windows) return next(e)
+    // The ps-* parsers are written against cmdlet output as Windows prints it:
+    // `Get-Service` and `Get-NetTCPConnection` do not exist elsewhere and
+    // `Get-WinEvent` is an event-log cmdlet. A PowerShell tool on another
+    // platform passes those through; the shell-agnostic kinds need no gate.
+    if (plan.kind.startsWith('ps-')) {
+      if (windows === null) windows = (await $.env.get('OS')) === 'Windows_NT'
+      if (!windows) return next(e)
+    }
 
-    const r = await next(e)
+    const r = await next(plan.command === command ? e : { ...e, command: plan.command })
 
-    return (await finish($, r, 'ps-dir', notify, (text) => compressPsDir(text, { maxEntries: caps.maxDirEntries }, plan.command))) ?? r
+    const compress = COMPRESSORS[plan.kind]
+    if (!compress) return r
+    return (await finish($, r, plan.kind, notify, (text) => compress(text, caps, plan.command))) ?? r
   })
     .catch((_, e, next) => next(e))
 }

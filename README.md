@@ -92,6 +92,11 @@ say they were written to each tool's documented output shape.
 | `go build`, `go vet` | 170 B | 47 B | 72% | module download chatter dropped, repeated diagnostics collapsed, every diagnostic kept |
 | `npm install` | 146 B | 143 B | 2% | summary lines only; a clean non-interactive install has little to trim |
 | `Get-ChildItem` | 1,406 B | 202 B | 86% | `path (N entries):` plus names and sizes; headers, owner, and timestamps dropped |
+| `Get-ChildItem -Recurse` † | 589,492 B | 7,462 B | 99% | one line per directory with its entry count, budgeted by directory, so the first directory cannot spend it all and the rest of the tree still shows |
+| `Get-Process` | 1,470 B | 578 B | 61% | `name id ws cpu` per process; Handles, NPM, PM, VM and SI dropped, `SI` hoisted to the legend when it is constant |
+| `Get-Command` † | 37,040 B | 9,844 B | 73% | one line per command with the header printed once; column padding and the dash rule dropped |
+| `Get-Help <cmdlet> -Full` | 7,257 B | 1,801 B | 75% | section titles, the description's opening lines, one line per parameter; the `Required?`/`Position?` boilerplate and RELATED LINKS dropped |
+| `Get-Module -ListAvailable` | 1,782 B | 1,070 B | 40% | one heading per install root, one line per module; column padding and the dash rule dropped |
 
 † Measured with the compressor directly. In a live session an output that size
 is saved to a file before the mod sees it (see [Limits](#limits)), so the model
@@ -184,23 +189,52 @@ and no cache to expire.
 
 ## PowerShell tool
 
-On Windows, Claude Code registers a `PowerShell` tool alongside `Bash`. The mod
-registers a second handler for the cmdlet with the fattest output.
+On Windows, Claude Code registers a `PowerShell` tool alongside `Bash`, and the
+mod registers a handler for it. Every cmdlet table in PowerShell is the same
+`Format-Table` shape with a dash rule under its header, so one parser reads them
+all and only the column policy differs.
 
-| Cmdlet | Rewrite | What the model gets |
-| --- | --- | --- |
-| `Get-ChildItem` (also `gci`, `ls`, `dir`) | none | `path (N entries):`, `dir/`, `file (size)`; headers, owner, and timestamps dropped, entry cap with the recovery hint |
+| Cmdlet | What the model gets |
+| --- | --- |
+| `Get-ChildItem` (also `gci`, `ls`, `dir`) | `path (N entries):`, `dir/`, `file (size)`; headers, owner, and timestamps dropped; with `-Recurse`, one line per directory and one entry budget across the whole tree |
+| `Get-Process` (also `ps`, `gps`) | one line per process: working set, CPU, Id, name; Handles, NPM, PM, VM and SI dropped |
+| `Get-Service` (also `gsv`) | one line per service: status and name; `DisplayName` dropped, because it is the name with spaces |
+| `Get-NetTCPConnection` | one line per connection: addresses, ports, state; a column every row shares becomes one legend entry |
+| `Get-Command` (also `gcm`) | one line per command: type, name, source; `Version` dropped when every row has one, and the rows stay whole when a few built-in functions have neither a version nor a source |
+| `Get-CimInstance` (also `gcim`) | the same squeeze; `CommandLine` is kept whole when it contains spaces |
+| `Get-Module -ListAvailable` (also `gmo`) | one heading per install root, one line per module; `PreRelease` and `PSEdition` dropped when the rows split cleanly, whole rows otherwise |
+| `Get-WinEvent` | one line per event: timestamp, Id, level, the start of the message; wrapped message lines counted and dropped |
+| `Get-Help <cmdlet> -Full` | section titles, the description's opening lines, one line per parameter; the `Required?`/`Position?` boilerplate, RELATED LINKS and the reprinted text dropped |
+| `dotnet build`, `dotnet test` | every compiler diagnostic once (MSBuild repeats one per project), passing tests counted instead of listed, the failed test's assertion and stack frames kept, summary kept |
 
-The handler is compression-only by design: PowerShell parameter semantics are
-riskier to rewrite than bash's, and the six-column `Format-Table` is where the
-tokens actually go. The parser reads each row from the back — name last, size
-before it — so both the Windows (`Mode LastWriteTime Length Name`) and the Linux
-pwsh (`UnixMode User Group LastWriteTime Size Name`) layouts work. Names that
-the console wraps onto a second line are joined back together before parsing;
-at the default 80 columns that is the common case, not the edge case.
+The header names are all the parser trusts, so a table it cannot split back onto
+its own headers is left whole rather than spliced into the wrong columns: pwsh
+separates wide columns with two spaces and two narrow neighbours with one, and a
+value containing a space defeats both. Two rows of the same listing can even
+split differently, so the split is chosen once for the whole command.
 
-The handler stays inert unless the platform reports Windows: the gate is one
-memoized environment read, and no process is spawned to decide it.
+CI runs every one of these against the real cmdlet on `windows-latest`, which is
+the only place `Get-Service`, `Get-NetTCPConnection`, `Get-CimInstance` and
+`Get-WinEvent` exist. From that run: `Get-Service` 14,421 B to 9,083 B,
+`Get-NetTCPConnection` 9,415 B to 2,532 B, `Get-CimInstance Win32_Process`
+12,549 B to 5,789 B, `Get-WinEvent` 2,317 B to 1,547 B.
+
+The cmdlet parsers gate on Windows: `Get-Service`, `Get-NetTCPConnection` and
+`Get-WinEvent` do not exist elsewhere. The gate is one memoized environment read,
+and no process is spawned to decide it. The shared Bash compressors below the
+cmdlet list are not gated - they read output that is identical on every platform.
+
+### Cross-platform commands through the PowerShell tool
+
+`git status`, `git diff`, `git log`, `kubectl logs`, `gh pr view` and the rest of
+the Bash-side compressors print the same text whichever shell launched them, so a
+PowerShell session uses the same planners instead of getting nothing. A rewrite
+is taken only when it means the same thing in both shells: a flag appended at the
+end (`git status --porcelain=v1 -b`) is one string either way, but a rewrite that
+quotes is not - `'x'` is a literal in PowerShell and a shell-quoted word in bash,
+a backtick escapes rather than substitutes, and `$name` is a variable. Those
+commands run exactly as written, uncompressed, and `git commit -m 'msg'` is the
+common case.
 
 ## The session counter
 
@@ -255,7 +289,9 @@ claude plugin configure token-killer
 | `maxGrepPerFile` | 8 | kept matches per file (3, 5, 8, 15, 30) |
 | `maxGrepTotal` | 150 | kept matches across all files (50, 100, 150, 300, 600) |
 | `maxLineLen` | 200 | truncate longer match lines (80, 120, 200, 300, 500) |
-| `maxDirEntries` | 200 | entries listed before elision (50, 100, 200, 500, 1000); `ls` and `find` spend one budget across all directories, `Get-ChildItem` applies it per directory |
+| `maxDirEntries` | 200 | entries listed before elision (50, 100, 200, 500, 1000); `ls`, `find` and a recursive `Get-ChildItem` spend one budget across every directory, a non-recursive multi-path call gets it per directory |
+| `maxCmdletRows` | 200 | rows kept from `Get-Process`, `Get-Service`, `Get-NetTCPConnection`, `Get-CimInstance`, `Get-Command`, `Get-Module` and `Get-WinEvent`, and lines kept per section of a `Get-Help -Full` topic (50, 100, 200, 500, 1000) |
+| `maxDiagLines` | 40 | compiler diagnostics kept from `dotnet build` and `dotnet test` before the rest are counted (10, 20, 40, 80, 160); a diagnostic repeated per project counts once |
 | `notify` | `true` | show a toast with bytes saved when at least 200 bytes were saved |
 
 Each cap is a pick-list, not a free-text number, so `claude plugin configure`
@@ -335,7 +371,11 @@ hooks/
   gotest.ts       go test output compaction
   gobuild.ts      go build / go vet output compaction
   gh.ts           gh pr|issue|run list table compaction
-  powershell.ts   Windows-only PowerShell handler (Get-ChildItem)
+  dotnet.ts       dotnet build / dotnet test output compaction
+  powershell.ts   PowerShell handler: route a command, Get-ChildItem listings
+  pwshcmdlets.ts  Format-Table parser and the cmdlet column policies
+  pwshevents.ts   Get-WinEvent tables: one line per event
+  pwshhelp.ts     Get-Help -Full topics: sections, not parameter boilerplate
 tests/            claude-code/testing suites, one file per module
 types/            vendored claude-code.d.ts for typechecking
 ```
