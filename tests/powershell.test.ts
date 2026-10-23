@@ -3,6 +3,7 @@ import { expect, mock, test, tier } from 'claude-code/testing'
 tier('user')
 
 import { compressPsDir, planPowerShell } from '../hooks/powershell.ts'
+import { psSafeRewrite } from '../hooks/register.ts'
 
 // ------------------------------------------------------------- planner
 
@@ -34,9 +35,24 @@ test('pipes, separators, subexpressions and comments bail out', () => {
   }
 })
 
-test('non-Get-ChildItem commands are not planned', () => {
+test('cmdlet tables plan their own kind, and only those', () => {
+  expect(planPowerShell('Get-Process')!.kind).toBe('ps-process')
+  expect(planPowerShell('ps')!.kind).toBe('ps-process')
+  expect(planPowerShell('gsv')!.kind).toBe('ps-service')
+  expect(planPowerShell('Get-NetTCPConnection -State Listen')!.kind).toBe('ps-net')
+  expect(planPowerShell('Get-Command')!.kind).toBe('ps-command')
+  expect(planPowerShell('Get-CimInstance Win32_Process')!.kind).toBe('ps-cim')
+  expect(planPowerShell('Get-Module -ListAvailable')!.kind).toBe('ps-module')
+  expect(planPowerShell('Get-WinEvent -LogName System -MaxEvents 20')!.kind).toBe('ps-event')
+  expect(planPowerShell('Get-Help Get-ChildItem -Full')!.kind).toBe('ps-help')
+})
+
+test('commands outside the PowerShell families are not planned here', () => {
+  // `git status` is planned by the shared, shell-agnostic planners instead:
+  // the handler falls through to them and compresses without rewriting.
   expect(planPowerShell('git status')).toBeNull()
-  expect(planPowerShell('Get-Process')).toBeNull()
+  expect(planPowerShell('dotnet build')).toBeNull()
+  expect(planPowerShell('Write-Host hi')).toBeNull()
   expect(planPowerShell('')).toBeNull()
 })
 
@@ -147,6 +163,27 @@ test('entry cap elides with the tk:raw recovery hint', () => {
   expect(out).toContain('+3 more - raw: Get-ChildItem /x # tk:raw')
 })
 
+test('a recursive listing is budgeted by directory, not by entry', () => {
+  // One real tree: 1,294 directories, the first holding 1,143 entries. A budget
+  // spent in section order would print 200 of those and drop every other
+  // directory, so the shape of the tree would be gone.
+  const section = (dir: string, count: number) =>
+    [
+      `    Directory: ${dir}`,
+      'UnixMode User Group LastWriteTime Size Name',
+      '---- ---- ---- ---- ---- ----',
+      ...Array.from({ length: count }, (_, i) => `-rw-r--r-- hermes hermes 10/21/2026 23:09 ${i} f${i}.txt`),
+    ].join('\n')
+  const raw = [section('/tree', 6), section('/tree/a', 2), section('/tree/b', 2), section('/tree/c', 1)].join('\n\n')
+  const out = compressPsDir(raw, { maxEntries: 2 }, 'Get-ChildItem -Recurse /tree')
+  expect(out).toContain('(4 directories, 11 entries)')
+  expect(out).toContain('/tree (6)')
+  expect(out).toContain('/tree/a (2)')
+  expect(out).not.toContain('/tree/c (1)')
+  expect(out).toContain('... +2 more directories - raw: Get-ChildItem -Recurse /tree # tk:raw')
+  expect(out).not.toContain('f5.txt')
+})
+
 // ------------------------------------------------------------- e2e hook
 
 type PsRes = { stdout: string; stderr: string; interrupted: boolean }
@@ -195,14 +232,62 @@ test('PowerShell on Linux is NOT trimmed: the handler stays inert', async ($, on
   expect(spawns.length).toBe(0)
 })
 
-test('non-gci PowerShell commands pass through untouched', async ($, on) => {
+test('a cmdlet table is trimmed through the hook on Windows', async ($, on) => {
   const seen: string[] = []
-  const proc = 'Handles  NPM(K)  ProcessName\n-------  -------  -----------\n1200     50       chrome'
+  const proc = [
+    ' NPM(K)    PM(K)      WS(K)     CPU(s)     Id  SI ProcessName',
+    ' ------    -----      -----     ------     --  -- -----------',
+    '    220       30      25000      80.25   4100   0 chrome',
+    '    180       12      12000       1.25   2200   1 bash',
+  ].join('\n')
   fakePowerShell(on, proc, seen, 'windows')
   await $.session.start(SESSION)
 
   const r: any = await $.tool.call({ tool: 'PowerShell', command: 'Get-Process' })
-  expect(r.result.stdout).toBe(proc)
+  expect(seen[0]).toBe('Get-Process')
+  expect(r.result.stdout).toContain('# cols:')
+  expect(r.result.stdout.length).toBeLessThan(proc.length)
+})
+
+test('a shell-agnostic command is compressed through the PowerShell tool', async ($, on) => {
+  const seen: string[] = []
+  const status = '## main...origin/main\n M src/a.ts\n?? b.ts'
+  fakePowerShell(on, status, seen, 'windows')
+  await $.session.start(SESSION)
+
+  const r: any = await $.tool.call({ tool: 'PowerShell', command: 'git status' })
+  expect(seen[0]).toBe('git status --porcelain=v1 -b')
+  expect(r.result.stdout.length).toBeLessThan(status.length)
+})
+
+test('a command the shared planners rewrite is rewritten only when the string means the same in PowerShell', async ($, on) => {
+  const seen: string[] = []
+  fakePowerShell(on, '## main...origin/main\n M src/a.ts', seen, 'windows')
+  await $.session.start(SESSION)
+
+  await $.tool.call({ tool: 'PowerShell', command: 'git status' })
+  // Bare `git status` is rewritten to its porcelain form on both shells.
+  expect(seen[0]).toBe('git status --porcelain=v1 -b')
+})
+
+test('a rewrite that quotes is not taken from the shared planners', () => {
+  expect(psSafeRewrite('git status', 'git status --porcelain=v1 -b')).toBe(true)
+  expect(psSafeRewrite('git status 2>&1', 'git status --porcelain=v1 -b 2>&1')).toBe(true)
+  expect(psSafeRewrite('git commit', "git commit -m 'msg with space'")).toBe(false)
+  expect(psSafeRewrite('rg foo', 'rg foo [x]')).toBe(false)
+  expect(psSafeRewrite('kubectl logs pod', 'kubectl logs pod `n[0]`')).toBe(false)
+  expect(psSafeRewrite('git log', 'git log --oneline')).toBe(true)
+  expect(psSafeRewrite('git diff', "git diff -- ':!*.lock'")).toBe(false)
+})
+
+test('non-gci PowerShell commands pass through untouched', async ($, on) => {
+  const seen: string[] = []
+  const out = 'hello'
+  fakePowerShell(on, out, seen, 'windows')
+  await $.session.start(SESSION)
+
+  const r: any = await $.tool.call({ tool: 'PowerShell', command: 'Write-Host hi' })
+  expect(r.result.stdout).toBe(out)
 })
 
 test('error results pass through uncompressed', async ($, on) => {

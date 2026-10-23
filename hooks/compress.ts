@@ -19,9 +19,17 @@ export type Caps = {
   /** grep: truncate any single match line longer than this. */
   maxLineLen: number
   /** ls, find and Get-ChildItem: kept entries before an elision line. The ls
-   * and find compressors spend one budget across every directory; the
-   * PowerShell handler applies it to each directory section. */
+   * and find compressors spend one budget across every directory, and a
+   * recursive Get-ChildItem does the same; a non-recursive multi-path call gets
+   * the budget per directory. */
   maxDirEntries: number
+  /** cmdlet tables, Get-WinEvent and Get-Help: kept rows before an elision
+   * line. One budget per command, spent across every `Directory:` section. */
+  maxCmdletRows: number
+  /** dotnet build/test: kept compiler diagnostics before an elision line.
+   * Repeats of one diagnostic (MSBuild prints it per project) are collapsed
+   * first and count once. */
+  maxDiagLines: number
 }
 
 export const DEFAULT_CAPS: Caps = {
@@ -32,6 +40,8 @@ export const DEFAULT_CAPS: Caps = {
   maxGrepTotal: 150,
   maxLineLen: 200,
   maxDirEntries: 200,
+  maxCmdletRows: 200,
+  maxDiagLines: 40,
 }
 
 /**
@@ -50,6 +60,8 @@ export const CAP_CHOICES: Record<keyof Caps, readonly number[]> = {
   maxGrepTotal: [50, 100, 150, 300, 600],
   maxLineLen: [80, 120, 200, 300, 500],
   maxDirEntries: [50, 100, 200, 500, 1000],
+  maxCmdletRows: [50, 100, 200, 500, 1000],
+  maxDiagLines: [10, 20, 40, 80, 160],
 }
 
 // ---------------------------------------------------------------- git status

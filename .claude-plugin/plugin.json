@@ -87,7 +87,7 @@
     "maxDirEntries": {
       "type": "string",
       "title": "Directory entries",
-      "description": "Entries listed before the rest are elided with a count. ls and find share one budget across every directory; Get-ChildItem applies it per directory.",
+      "description": "Entries listed before the rest are elided with a count. ls, find and a recursive Get-ChildItem share one budget across every directory; a non-recursive multi-path call gets it per directory.",
       "default": "200",
       "options": [
         "50",
@@ -95,6 +95,32 @@
         "200",
         "500",
         "1000"
+      ]
+    },
+    "maxCmdletRows": {
+      "type": "string",
+      "title": "Cmdlet rows",
+      "description": "Rows kept from Get-Process, Get-Service, Get-NetTCPConnection, Get-CimInstance, Get-Command, Get-Module, Get-WinEvent and Get-Help before the rest are counted.",
+      "default": "200",
+      "options": [
+        "50",
+        "100",
+        "200",
+        "500",
+        "1000"
+      ]
+    },
+    "maxDiagLines": {
+      "type": "string",
+      "title": "Build diagnostics",
+      "description": "Compiler diagnostics kept from dotnet build and dotnet test before the rest are counted. A diagnostic repeated per project counts once.",
+      "default": "40",
+      "options": [
+        "10",
+        "20",
+        "40",
+        "80",
+        "160"
       ]
     },
     "notify": {
