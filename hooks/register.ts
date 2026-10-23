@@ -10,7 +10,7 @@
 // output reaches the model. Unlike a redactor, the worst case here is wasted
 // tokens, never lost safety.
 
-import type { Register } from 'claude-code'
+import type { EngineInterface, Register } from 'claude-code'
 import { CAP_CHOICES, DEFAULT_CAPS, compressGitDiff, compressGitStatus, compressGrep, type Caps } from './compress.ts'
 import { planRewrite, splitStderrMerge, withStderrMerge } from './plan.ts'
 import { installStatus, recordSaved, utf8Length, type StatusEngine } from './status.ts'
@@ -43,6 +43,9 @@ import { compressVitest, planVitest } from './vitest.ts'
 // older config may still hold plain numbers, so both are accepted - but only
 // the rungs in CAP_CHOICES, so an out-of-list value cannot quietly become a cap.
 type Options = Partial<Record<keyof Caps, number | string>> & { notify?: boolean }
+
+/** `finish` toasts and counts, so it needs both of the UI calls. */
+type FinishEngine = StatusEngine & Pick<EngineInterface, 'ui'>
 
 /** One cap: a picker string or a number on its ladder, else the default. */
 function capValue(value: unknown, key: keyof Caps): number {
@@ -77,7 +80,7 @@ type Finishable = { deny?: unknown; isError?: boolean; result?: unknown }
  * status line. Returns null when the original result must stand.
  */
 async function finish<T extends Finishable>(
-  $: StatusEngine,
+  $: FinishEngine,
   r: T,
   kind: string,
   notify: boolean,
