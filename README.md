@@ -208,14 +208,22 @@ claude plugin configure token-killer
 
 | Option | Default | Meaning |
 | --- | --- | --- |
-| `maxStatusFiles` | 200 | changed and untracked entries listed before elision |
-| `maxDiffLinesPerFile` | 60 | kept hunk lines per file |
-| `maxDiffTotalLines` | 400 | kept diff lines across all files |
-| `maxGrepPerFile` | 8 | kept matches per file |
-| `maxGrepTotal` | 150 | kept matches across all files |
-| `maxLineLen` | 200 | truncate longer match lines |
-| `maxDirEntries` | 200 | entries listed before elision; `ls` and `find` spend one budget across all directories, `Get-ChildItem` applies it per directory |
+| `maxStatusFiles` | 200 | changed and untracked entries listed before elision (50, 100, 200, 500, 1000) |
+| `maxDiffLinesPerFile` | 60 | kept hunk lines per file (20, 40, 60, 100, 200) |
+| `maxDiffTotalLines` | 400 | kept diff lines across all files (150, 400, 800, 1500, 3000) |
+| `maxGrepPerFile` | 8 | kept matches per file (3, 5, 8, 15, 30) |
+| `maxGrepTotal` | 150 | kept matches across all files (50, 100, 150, 300, 600) |
+| `maxLineLen` | 200 | truncate longer match lines (80, 120, 200, 300, 500) |
+| `maxDirEntries` | 200 | entries listed before elision (50, 100, 200, 500, 1000); `ls` and `find` spend one budget across all directories, `Get-ChildItem` applies it per directory |
 | `notify` | `true` | show a toast with bytes saved when at least 200 bytes were saved |
+
+Each cap is a pick-list, not a free-text number, so `claude plugin configure`
+opens with its default already selected and `Save configuration` needs no
+typing. That is not a design taste: Claude Code only prefills boolean and
+pick-list fields in that dialog, and leaves a `number` row blank, so a
+numbers-typed cap would greet every fresh install with seven empty fields.
+A stored value outside its list counts as unset, and the shipped default
+applies.
 
 The eight options above are the ones worth setting: seven of them decide how
 much of a common command's output you see, and `notify` controls the toast. The

@@ -1,4 +1,6 @@
 import { expect, mock, test, tier } from 'claude-code/testing'
+import { DEFAULT_CAPS, type Caps } from '../hooks/compress.ts'
+import { readCaps } from '../hooks/register.ts'
 
 tier('user')
 
@@ -538,4 +540,29 @@ test('cargo test elision hint names the executed command', async ($, on) => {
 
   expect(seen[0]).toBe('cargo test --lib')
   expect(r.result.stdout).toContain('raw: cargo test --lib # tk:raw')
+})
+
+// The manifest declares each cap as a string pick-list, because Claude Code's
+// `/plugin configure` dialog prefills choices and booleans but opens a `number`
+// row blank. So the hook has to take both shapes: the picker's string today,
+// and the plain number an older settings.json may still hold. Anything that is
+// not a positive number falls back to the shipped default instead of poisoning
+// every cap downstream.
+test('caps accept picker strings, numbers, and fall back on junk', () => {
+  const keys = Object.keys(DEFAULT_CAPS) as (keyof Caps)[]
+
+  for (const key of keys) {
+    const shipped = DEFAULT_CAPS[key]
+    expect(readCaps({ [key]: String(shipped) })[key]).toBe(shipped)
+    expect(readCaps({ [key]: shipped })[key]).toBe(shipped)
+    expect(readCaps({ [key]: '1000' })[key]).toBe(1000)
+  }
+
+  const junk = [{}, { maxGrepPerFile: '' }, { maxGrepPerFile: 'abc' }, { maxGrepPerFile: 0 }, { maxGrepPerFile: -4 }, { maxGrepPerFile: null }, { maxGrepPerFile: {} }]
+  for (const options of junk) {
+    expect(readCaps(options as Record<string, unknown>).maxGrepPerFile).toBe(DEFAULT_CAPS.maxGrepPerFile)
+  }
+
+  expect(readCaps({ maxLineLen: '60.9' }).maxLineLen).toBe(60)
+  expect(readCaps({}).maxStatusFiles).toBe(DEFAULT_CAPS.maxStatusFiles)
 })

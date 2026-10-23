@@ -16,15 +16,27 @@ const { DEFAULT_CAPS } = await import(new URL('hooks/compress.ts', root).href)
 
 const problems = []
 
-// 1. Every numeric cap in code is configurable, with the same default.
+// 1. Every numeric cap in code is configurable, as a pick-list with the same
+//    default. The type is `string` with `options` on purpose: Claude Code's
+//    `/plugin configure` dialog prefills choices and booleans only, and leaves
+//    `number` rows blank, so a numbers-typed cap would greet a fresh install
+//    with seven empty fields instead of its defaults.
 for (const [key, value] of Object.entries(DEFAULT_CAPS)) {
   const opt = userConfig[key]
   if (!opt) {
     problems.push(`${key}: in DEFAULT_CAPS but missing from userConfig`)
     continue
   }
-  if (opt.default !== value) problems.push(`${key}: userConfig default ${opt.default} != DEFAULT_CAPS ${value}`)
-  if (opt.type !== 'number') problems.push(`${key}: userConfig type is ${opt.type}, expected number`)
+  if (Number(opt.default) !== value) problems.push(`${key}: userConfig default ${opt.default} != DEFAULT_CAPS ${value}`)
+  if (opt.type !== 'string') problems.push(`${key}: userConfig type is ${opt.type}, expected string (pickers prefill, numbers do not)`)
+  if (!Array.isArray(opt.options) || opt.options.length === 0) {
+    problems.push(`${key}: userConfig needs an options pick-list, or the field renders blank`)
+  } else {
+    if (!opt.options.includes(String(opt.default))) problems.push(`${key}: default ${opt.default} is not one of its options`)
+    for (const o of opt.options) {
+      if (!Number.isInteger(Number(o)) || Number(o) < 1) problems.push(`${key}: option ${o} is not a positive integer`)
+    }
+  }
 }
 
 // 2. Every non-cap option the code reads exists too.
@@ -51,7 +63,10 @@ for (const key of Object.keys(userConfig)) {
   if (!documentedKeys.has(key)) problems.push(`${key}: in userConfig but not documented in the README table`)
 }
 for (const row of documented) {
-  const want = String(userConfig[row.key].default)
+  const raw = userConfig[row.key].default
+  // Caps are pickers now, so the manifest holds "200" where the README says
+  // 200; the boolean option has to stay as it is.
+  const want = typeof raw === 'boolean' ? String(raw) : String(Number(raw))
   if (row.def !== want) problems.push(`${row.key}: README says ${row.def}, manifest says ${want}`)
 }
 
