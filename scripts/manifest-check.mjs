@@ -12,7 +12,7 @@ const read = (p) => readFileSync(new URL(p, root), 'utf8')
 
 const manifest = JSON.parse(read('.claude-plugin/plugin.json'))
 const userConfig = manifest.userConfig ?? {}
-const { DEFAULT_CAPS } = await import(new URL('hooks/compress.ts', root).href)
+const { CAP_CHOICES, DEFAULT_CAPS } = await import(new URL('hooks/compress.ts', root).href)
 
 const problems = []
 
@@ -36,6 +36,14 @@ for (const [key, value] of Object.entries(DEFAULT_CAPS)) {
     for (const o of opt.options) {
       if (!Number.isInteger(Number(o)) || Number(o) < 1) problems.push(`${key}: option ${o} is not a positive integer`)
     }
+    // 1b. The pick-list is also the hook's contract: register() only accepts a
+    //     value that is on it, so a rung added to the manifest but not to
+    //     CAP_CHOICES would be a choice the user can pick and the hook discards.
+    const wanted = (CAP_CHOICES[key] ?? []).map(String).join(',')
+    if (wanted !== opt.options.join(',')) {
+      problems.push(`${key}: options [${opt.options.join(',')}] != CAP_CHOICES [${wanted}]`)
+    }
+    if (!(CAP_CHOICES[key] ?? []).includes(value)) problems.push(`${key}: DEFAULT_CAPS ${value} is not in CAP_CHOICES`)
   }
 }
 

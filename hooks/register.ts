@@ -11,7 +11,7 @@
 // tokens, never lost safety.
 
 import type { Register } from 'claude-code'
-import { DEFAULT_CAPS, compressGitDiff, compressGitStatus, compressGrep, type Caps } from './compress.ts'
+import { CAP_CHOICES, DEFAULT_CAPS, compressGitDiff, compressGitStatus, compressGrep, type Caps } from './compress.ts'
 import { planRewrite, splitStderrMerge, withStderrMerge } from './plan.ts'
 import { compressPsDir, planPowerShell } from './powershell.ts'
 import { compressCargoTest, planCargoTest } from './cargotest.ts'
@@ -38,27 +38,27 @@ import { compressVitest, planVitest } from './vitest.ts'
 // The manifest declares each cap as a string pick-list (`options`), because
 // Claude Code's `/plugin configure` dialog only prefills choices and booleans -
 // a `number` field opens blank, so a fresh install would ask for seven numbers
-// instead of showing the defaults. The cost is that the values arrive as
-// strings here, and an older config may still hold plain numbers, so both are
-// accepted and anything unusable falls back to the shipped default.
+// instead of showing the defaults. The values arrive as strings here, and an
+// older config may still hold plain numbers, so both are accepted - but only
+// the rungs in CAP_CHOICES, so an out-of-list value cannot quietly become a cap.
 type Options = Partial<Record<keyof Caps, number | string>> & { notify?: boolean }
 
-/** One cap: a picker string or a number, else the default. Never below one. */
-function capValue(value: unknown, fallback: number): number {
+/** One cap: a picker string or a number on its ladder, else the default. */
+function capValue(value: unknown, key: keyof Caps): number {
   const n = typeof value === 'number' ? value : typeof value === 'string' && value.trim() !== '' ? Number(value) : NaN
-  return Number.isFinite(n) && n >= 1 ? Math.floor(n) : fallback
+  return Number.isInteger(n) && CAP_CHOICES[key].includes(n) ? n : DEFAULT_CAPS[key]
 }
 
 /** The caps register() runs with: every option, defaulted and coerced. */
 export function readCaps(opts: Readonly<Record<string, unknown>>): Caps {
   return {
-    maxStatusFiles: capValue(opts.maxStatusFiles, DEFAULT_CAPS.maxStatusFiles),
-    maxDiffLinesPerFile: capValue(opts.maxDiffLinesPerFile, DEFAULT_CAPS.maxDiffLinesPerFile),
-    maxDiffTotalLines: capValue(opts.maxDiffTotalLines, DEFAULT_CAPS.maxDiffTotalLines),
-    maxGrepPerFile: capValue(opts.maxGrepPerFile, DEFAULT_CAPS.maxGrepPerFile),
-    maxGrepTotal: capValue(opts.maxGrepTotal, DEFAULT_CAPS.maxGrepTotal),
-    maxLineLen: capValue(opts.maxLineLen, DEFAULT_CAPS.maxLineLen),
-    maxDirEntries: capValue(opts.maxDirEntries, DEFAULT_CAPS.maxDirEntries),
+    maxStatusFiles: capValue(opts.maxStatusFiles, 'maxStatusFiles'),
+    maxDiffLinesPerFile: capValue(opts.maxDiffLinesPerFile, 'maxDiffLinesPerFile'),
+    maxDiffTotalLines: capValue(opts.maxDiffTotalLines, 'maxDiffTotalLines'),
+    maxGrepPerFile: capValue(opts.maxGrepPerFile, 'maxGrepPerFile'),
+    maxGrepTotal: capValue(opts.maxGrepTotal, 'maxGrepTotal'),
+    maxLineLen: capValue(opts.maxLineLen, 'maxLineLen'),
+    maxDirEntries: capValue(opts.maxDirEntries, 'maxDirEntries'),
   }
 }
 

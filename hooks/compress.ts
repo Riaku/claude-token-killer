@@ -34,6 +34,24 @@ export const DEFAULT_CAPS: Caps = {
   maxDirEntries: 200,
 }
 
+/**
+ * The rungs each cap can take: the manifest's pick-lists, in code.
+ *
+ * Claude Code only prefills a pick-list row in `/plugin configure`, so every
+ * cap has to be one. A stored value outside its list is a knob the plugin does
+ * not have, and the shipped default applies - which is what register() does
+ * with anything that does not parse to one of these.
+ */
+export const CAP_CHOICES: Record<keyof Caps, readonly number[]> = {
+  maxStatusFiles: [50, 100, 200, 500, 1000],
+  maxDiffLinesPerFile: [20, 40, 60, 100, 200],
+  maxDiffTotalLines: [150, 400, 800, 1500, 3000],
+  maxGrepPerFile: [3, 5, 8, 15, 30],
+  maxGrepTotal: [50, 100, 150, 300, 600],
+  maxLineLen: [80, 120, 200, 300, 500],
+  maxDirEntries: [50, 100, 200, 500, 1000],
+}
+
 // ---------------------------------------------------------------- git status
 
 /**

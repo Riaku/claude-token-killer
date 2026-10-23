@@ -222,8 +222,9 @@ opens with its default already selected and `Save configuration` needs no
 typing. That is not a design taste: Claude Code only prefills boolean and
 pick-list fields in that dialog, and leaves a `number` row blank, so a
 numbers-typed cap would greet every fresh install with seven empty fields.
-A stored value outside its list counts as unset, and the shipped default
-applies.
+A stored value outside its list is treated as unset, and the shipped default
+applies - Claude Code drops it, and the hook rejects it as well, so a value the
+picker never offered can never become a live cap.
 
 The eight options above are the ones worth setting: seven of them decide how
 much of a common command's output you see, and `notify` controls the toast. The
