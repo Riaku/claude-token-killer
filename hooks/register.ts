@@ -13,6 +13,7 @@
 import type { Register } from 'claude-code'
 import { DEFAULT_CAPS, compressGitDiff, compressGitStatus, compressGrep, type Caps } from './compress.ts'
 import { planRewrite, splitStderrMerge, withStderrMerge } from './plan.ts'
+import { installStatus, recordSaved, utf8Length, type StatusEngine } from './status.ts'
 import { compressPsDir, planPowerShell } from './powershell.ts'
 import { compressCargoTest, planCargoTest } from './cargotest.ts'
 import { compressFind, planFind } from './find.ts'
@@ -47,15 +48,16 @@ type Finishable = { deny?: unknown; isError?: boolean; result?: unknown }
  * an error or an interrupt; take the text out of either result shape (a harness
  * may answer with a plain string); keep the compressed text only when it is
  * smaller, because a smaller wrong answer is worse than a larger right one;
- * then report the saving. Returns null when the original result must stand.
+ * then report the saving, to the toast and to the session counter behind the
+ * status line. Returns null when the original result must stand.
  */
-function finish<T extends Finishable>(
-  $: { ui: { toast: (message: string) => void } },
+async function finish<T extends Finishable>(
+  $: StatusEngine,
   r: T,
   kind: string,
   notify: boolean,
   compress: (text: string) => string,
-): T | { result: string } | { result: { stdout: string } } | null {
+): Promise<T | { result: string } | { result: { stdout: string } } | null> {
   if (r.deny !== undefined || r.isError) return null
   const maybeInterrupted = r.result as { interrupted?: unknown } | undefined
   if (maybeInterrupted && typeof maybeInterrupted === 'object' && maybeInterrupted.interrupted === true) return null
@@ -67,8 +69,11 @@ function finish<T extends Finishable>(
   const compressed = compress(original)
   if (compressed === original || compressed.length >= original.length) return null
 
-  const saved = original.length - compressed.length
-  const pct = Math.round((saved / original.length) * 100)
+  // Bytes, not string length: a line of CJK or emoji costs the model three or
+  // four bytes per character, and the counter says what it saved.
+  const before = utf8Length(original)
+  const saved = before - utf8Length(compressed)
+  const pct = Math.round((saved / before) * 100)
   if (notify && saved >= TOAST_MIN_BYTES) {
     try {
       $.ui.toast(`token-killer: ${kind} -${saved} bytes (${pct}%)`)
@@ -76,6 +81,10 @@ function finish<T extends Finishable>(
       // no UI: the compression still stands
     }
   }
+
+  // Awaited on purpose: the write is one small JSON file, and awaiting it means
+  // a hot reload cannot drop the last saving. record never throws.
+  await recordSaved($, saved)
 
   if (typeof res === 'string') return { result: compressed }
   return { result: { ...(res as object), stdout: compressed } }
@@ -171,6 +180,9 @@ export const register: Register = (on, options) => {
     maxDirEntries: opts.maxDirEntries ?? DEFAULT_CAPS.maxDirEntries,
   }
 
+  // First, so a resumed session paints its saved total before any tool call.
+  installStatus(on)
+
   // Platform gate: one memoized in-process env read, no spawn. `OS=Windows_NT`
   // is set in every NT-family process (native cmd, PowerShell, Git Bash, Cygwin)
   // and unset on Linux and macOS, so "not Windows" is treated as Linux. That is
@@ -197,7 +209,7 @@ export const register: Register = (on, options) => {
 
     const compress = COMPRESSORS[plan.kind]
     if (!compress) return r
-    return finish($, r, plan.kind, notify, (text) => compress(text, caps, plan.command)) ?? r
+    return (await finish($, r, plan.kind, notify, (text) => compress(text, caps, plan.command))) ?? r
   })
     .catch((_, e, next) => next(e))
 
@@ -218,7 +230,7 @@ export const register: Register = (on, options) => {
 
     const r = await next(e)
 
-    return finish($, r, 'ps-dir', notify, (text) => compressPsDir(text, { maxEntries: caps.maxDirEntries }, plan.command)) ?? r
+    return (await finish($, r, 'ps-dir', notify, (text) => compressPsDir(text, { maxEntries: caps.maxDirEntries }, plan.command))) ?? r
   })
     .catch((_, e, next) => next(e))
 }
